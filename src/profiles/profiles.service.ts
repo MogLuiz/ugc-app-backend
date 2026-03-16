@@ -61,6 +61,17 @@ export class ProfilesService {
     return this.getMe(authUserId);
   }
 
+  async updatePhotoUrl(authUserId: string, photoUrl: string) {
+    const user = await this.getUserOrThrow(authUserId);
+    const profile = await this.profileRepo.findOne({ where: { userId: user.id } });
+    if (!profile) throw new NotFoundException('Perfil não encontrado');
+
+    profile.photoUrl = photoUrl;
+    await this.profileRepo.save(profile);
+
+    return this.getMe(authUserId);
+  }
+
   async updateCompanyProfile(authUserId: string, dto: UpdateCompanyProfileDto) {
     const user = await this.getUserOrThrow(authUserId);
     if (user.role !== UserRole.COMPANY) {

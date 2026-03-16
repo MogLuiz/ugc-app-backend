@@ -46,6 +46,15 @@ export class EnvValidation {
   @IsOptional()
   @IsString()
   SUPABASE_SERVICE_ROLE_KEY: string = '';
+
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  MAX_AVATAR_SIZE_MB: number = 5;
+
+  @IsOptional()
+  @IsString()
+  ALLOWED_AVATAR_MIME_TYPES: string = 'image/jpeg,image/png,image/webp';
 }
 
 export function validateEnv(config: Record<string, unknown>): EnvValidation {
