@@ -1,6 +1,10 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
+import { User } from '../users/entities/user.entity';
+import { Profile } from '../profiles/entities/profile.entity';
+import { CreatorProfile } from '../profiles/entities/creator-profile.entity';
+import { CompanyProfile } from '../profiles/entities/company-profile.entity';
 
 @Module({
   imports: [
@@ -11,7 +15,7 @@ import { ConfigService } from '@nestjs/config';
           return {
             type: 'postgres',
             url: databaseUrl,
-            entities: [],
+            entities: [User, Profile, CreatorProfile, CompanyProfile],
             synchronize: false,
             logging: configService.get<string>('NODE_ENV') === 'development',
             ssl: { rejectUnauthorized: false },
@@ -26,7 +30,7 @@ import { ConfigService } from '@nestjs/config';
           username: configService.get<string>('DB_USERNAME'),
           password: configService.get<string>('DB_PASSWORD'),
           database: configService.get<string>('DB_DATABASE'),
-          entities: [],
+          entities: [User, Profile, CreatorProfile, CompanyProfile],
           synchronize: false,
           logging: configService.get<string>('NODE_ENV') === 'development',
           ...(isSupabase && {

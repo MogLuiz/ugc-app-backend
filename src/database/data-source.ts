@@ -1,5 +1,6 @@
 import { DataSource } from 'typeorm';
 import { config } from 'dotenv';
+import { BootstrapSchema1731710000000 } from './migrations/1731710000000-BootstrapSchema';
 
 config();
 
@@ -11,7 +12,7 @@ export const AppDataSource = new DataSource(
         type: 'postgres',
         url: databaseUrl,
         entities: [__dirname + '/../**/*.entity{.ts,.js}'],
-        migrations: [],
+        migrations: [BootstrapSchema1731710000000],
         synchronize: false,
         logging: process.env.NODE_ENV === 'development',
         ssl: { rejectUnauthorized: false },
@@ -24,7 +25,7 @@ export const AppDataSource = new DataSource(
         password: process.env.DB_PASSWORD || 'postgres',
         database: process.env.DB_DATABASE || 'ugc',
         entities: [__dirname + '/../**/*.entity{.ts,.js}'],
-        migrations: [],
+        migrations: [BootstrapSchema1731710000000],
         synchronize: false,
         logging: process.env.NODE_ENV === 'development',
         ...(process.env.DB_HOST?.includes('supabase.co') && {
