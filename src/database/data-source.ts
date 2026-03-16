@@ -1,0 +1,34 @@
+import { DataSource } from 'typeorm';
+import { config } from 'dotenv';
+
+config();
+
+const databaseUrl = process.env.DATABASE_URL;
+
+export const AppDataSource = new DataSource(
+  databaseUrl
+    ? {
+        type: 'postgres',
+        url: databaseUrl,
+        entities: [__dirname + '/../**/*.entity{.ts,.js}'],
+        migrations: [],
+        synchronize: false,
+        logging: process.env.NODE_ENV === 'development',
+        ssl: { rejectUnauthorized: false },
+      }
+    : {
+        type: 'postgres',
+        host: process.env.DB_HOST || 'localhost',
+        port: parseInt(process.env.DB_PORT || '5432', 10),
+        username: process.env.DB_USERNAME || 'postgres',
+        password: process.env.DB_PASSWORD || 'postgres',
+        database: process.env.DB_DATABASE || 'ugc',
+        entities: [__dirname + '/../**/*.entity{.ts,.js}'],
+        migrations: [],
+        synchronize: false,
+        logging: process.env.NODE_ENV === 'development',
+        ...(process.env.DB_HOST?.includes('supabase.co') && {
+          ssl: { rejectUnauthorized: false },
+        }),
+      },
+);
