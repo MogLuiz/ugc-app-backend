@@ -30,6 +30,15 @@ export class CompanyProfile {
   @Column({ name: 'business_niche', type: 'varchar', length: 255, nullable: true })
   businessNiche: string | null;
 
+  @Column({ name: 'website_url', type: 'varchar', length: 500, nullable: true })
+  websiteUrl: string | null;
+
+  @Column({ name: 'instagram_username', type: 'varchar', length: 100, nullable: true })
+  instagramUsername: string | null;
+
+  @Column({ name: 'tiktok_username', type: 'varchar', length: 100, nullable: true })
+  tiktokUsername: string | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

@@ -5,6 +5,8 @@ import { User } from '../users/entities/user.entity';
 import { Profile } from '../profiles/entities/profile.entity';
 import { CreatorProfile } from '../profiles/entities/creator-profile.entity';
 import { CompanyProfile } from '../profiles/entities/company-profile.entity';
+import { Portfolio } from '../portfolio/entities/portfolio.entity';
+import { PortfolioMedia } from '../portfolio/entities/portfolio-media.entity';
 
 @Module({
   imports: [
@@ -15,7 +17,7 @@ import { CompanyProfile } from '../profiles/entities/company-profile.entity';
           return {
             type: 'postgres',
             url: databaseUrl,
-            entities: [User, Profile, CreatorProfile, CompanyProfile],
+            entities: [User, Profile, CreatorProfile, CompanyProfile, Portfolio, PortfolioMedia],
             synchronize: false,
             logging: configService.get<string>('NODE_ENV') === 'development',
             ssl: { rejectUnauthorized: false },
@@ -30,7 +32,7 @@ import { CompanyProfile } from '../profiles/entities/company-profile.entity';
           username: configService.get<string>('DB_USERNAME'),
           password: configService.get<string>('DB_PASSWORD'),
           database: configService.get<string>('DB_DATABASE'),
-          entities: [User, Profile, CreatorProfile, CompanyProfile],
+          entities: [User, Profile, CreatorProfile, CompanyProfile, Portfolio, PortfolioMedia],
           synchronize: false,
           logging: configService.get<string>('NODE_ENV') === 'development',
           ...(isSupabase && {

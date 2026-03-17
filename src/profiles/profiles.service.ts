@@ -10,6 +10,7 @@ import { UsersRepository } from '../users/users.repository';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { UpdateCreatorProfileDto } from './dto/update-creator-profile.dto';
 import { UpdateCompanyProfileDto } from './dto/update-company-profile.dto';
+import { PortfolioService } from '../portfolio/portfolio.service';
 
 @Injectable()
 export class ProfilesService {
@@ -21,6 +22,7 @@ export class ProfilesService {
     private creatorProfileRepo: Repository<CreatorProfile>,
     @InjectRepository(CompanyProfile)
     private companyProfileRepo: Repository<CompanyProfile>,
+    private portfolioService: PortfolioService,
   ) {}
 
   async getMe(authUserId: string) {
@@ -77,6 +79,12 @@ export class ProfilesService {
     return this.getMe(authUserId);
   }
 
+  async removePortfolioMedia(authUserId: string, mediaId: string) {
+    const user = await this.getUserOrThrow(authUserId);
+    await this.portfolioService.removeMedia(user.id, mediaId);
+    return this.getMe(authUserId);
+  }
+
   async updateCompanyProfile(authUserId: string, dto: UpdateCompanyProfileDto) {
     const user = await this.getUserOrThrow(authUserId);
     if (user.role !== UserRole.COMPANY) {
@@ -103,7 +111,9 @@ export class ProfilesService {
     return user;
   }
 
-  private buildPayload(user: User) {
+  private async buildPayload(user: User) {
+    const portfolio = await this.portfolioService.buildPortfolioPayload(user.id);
+
     return {
       id: user.id,
       authUserId: user.authUserId,
@@ -151,10 +161,14 @@ export class ProfilesService {
             companyName: user.companyProfile.companyName,
             jobTitle: user.companyProfile.jobTitle,
             businessNiche: user.companyProfile.businessNiche,
+            websiteUrl: user.companyProfile.websiteUrl,
+            instagramUsername: user.companyProfile.instagramUsername,
+            tiktokUsername: user.companyProfile.tiktokUsername,
             createdAt: user.companyProfile.createdAt,
             updatedAt: user.companyProfile.updatedAt,
           }
         : null,
+      portfolio,
     };
   }
 }

@@ -11,6 +11,7 @@ import { UserStatus } from '../../common/enums/user-status.enum';
 import { Profile } from '../../profiles/entities/profile.entity';
 import { CreatorProfile } from '../../profiles/entities/creator-profile.entity';
 import { CompanyProfile } from '../../profiles/entities/company-profile.entity';
+import { Portfolio } from '../../portfolio/entities/portfolio.entity';
 
 @Entity('users')
 export class User {
@@ -46,4 +47,7 @@ export class User {
 
   @OneToOne(() => CompanyProfile, (cp) => cp.user)
   companyProfile?: CompanyProfile;
+
+  @OneToOne(() => Portfolio, (portfolio) => portfolio.user)
+  portfolio?: Portfolio;
 }

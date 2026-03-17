@@ -4,9 +4,10 @@ import { UploadsService } from './uploads.service';
 import { ProfilesModule } from '../profiles/profiles.module';
 import { UsersModule } from '../users/users.module';
 import { AuthModule } from '../auth/auth.module';
+import { PortfolioModule } from '../portfolio/portfolio.module';
 
 @Module({
-  imports: [ProfilesModule, UsersModule, AuthModule],
+  imports: [ProfilesModule, UsersModule, AuthModule, PortfolioModule],
   controllers: [UploadsController],
   providers: [UploadsService],
   exports: [UploadsService],

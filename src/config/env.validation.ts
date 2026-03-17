@@ -55,6 +55,36 @@ export class EnvValidation {
   @IsOptional()
   @IsString()
   ALLOWED_AVATAR_MIME_TYPES: string = 'image/jpeg,image/png,image/webp';
+
+  @IsOptional()
+  @IsString()
+  AVATAR_BUCKET: string = 'avatars';
+
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  MAX_PORTFOLIO_IMAGE_SIZE_MB: number = 10;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  MAX_PORTFOLIO_VIDEO_SIZE_MB: number = 500;
+
+  @IsOptional()
+  @IsString()
+  ALLOWED_PORTFOLIO_IMAGE_MIME_TYPES: string = 'image/jpeg,image/png,image/webp';
+
+  @IsOptional()
+  @IsString()
+  ALLOWED_PORTFOLIO_VIDEO_MIME_TYPES: string = 'video/mp4,video/quicktime,video/webm';
+
+  @IsOptional()
+  @IsString()
+  PORTFOLIO_IMAGE_BUCKET: string = 'portfolio-images';
+
+  @IsOptional()
+  @IsString()
+  PORTFOLIO_VIDEO_BUCKET: string = 'portfolio-videos';
 }
 
 export function validateEnv(config: Record<string, unknown>): EnvValidation {

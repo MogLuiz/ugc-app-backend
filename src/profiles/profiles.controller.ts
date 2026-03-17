@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Patch, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, UseGuards } from '@nestjs/common';
 import { ProfilesService } from './profiles.service';
 import { SupabaseAuthGuard } from '../auth/guards/supabase-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -39,5 +39,13 @@ export class ProfilesController {
     @Body() dto: UpdateCompanyProfileDto,
   ) {
     return this.profilesService.updateCompanyProfile(user.authUserId, dto);
+  }
+
+  @Delete('me/portfolio/media/:mediaId')
+  removePortfolioMedia(
+    @CurrentUser() user: AuthUser,
+    @Param('mediaId') mediaId: string,
+  ) {
+    return this.profilesService.removePortfolioMedia(user.authUserId, mediaId);
   }
 }

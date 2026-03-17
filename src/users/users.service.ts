@@ -7,6 +7,8 @@ import { CreatorProfile } from '../profiles/entities/creator-profile.entity';
 import { CompanyProfile } from '../profiles/entities/company-profile.entity';
 import { UserRole } from '../common/enums/user-role.enum';
 import { UsersRepository } from './users.repository';
+import { Portfolio } from '../portfolio/entities/portfolio.entity';
+import { PortfolioMedia } from '../portfolio/entities/portfolio-media.entity';
 
 @Injectable()
 export class UsersService {
@@ -18,6 +20,10 @@ export class UsersService {
     private creatorProfileRepo: Repository<CreatorProfile>,
     @InjectRepository(CompanyProfile)
     private companyProfileRepo: Repository<CompanyProfile>,
+    @InjectRepository(Portfolio)
+    private portfolioRepo: Repository<Portfolio>,
+    @InjectRepository(PortfolioMedia)
+    private portfolioMediaRepo: Repository<PortfolioMedia>,
   ) {}
 
   async bootstrap(authUserId: string, email: string, role: UserRole) {
@@ -47,13 +53,35 @@ export class UsersService {
       await this.companyProfileRepo.save(company);
     }
 
+    const portfolio = this.portfolioRepo.create({
+      user: { id: user.id },
+    });
+    await this.portfolioRepo.save(portfolio);
+
     const userWithProfiles = await this.usersRepository.findByAuthUserIdWithProfiles(authUserId);
     if (!userWithProfiles) throw new Error('User not found after bootstrap');
 
     return this.buildPayload(userWithProfiles);
   }
 
-  private buildPayload(user: User) {
+  private async buildPayload(user: User) {
+    let portfolio = await this.portfolioRepo.findOne({
+      where: { user: { id: user.id } },
+    });
+
+    if (!portfolio) {
+      portfolio = await this.portfolioRepo.save(
+        this.portfolioRepo.create({
+          user: { id: user.id },
+        }),
+      );
+    }
+
+    const media = await this.portfolioMediaRepo.find({
+      where: { portfolioId: portfolio.id },
+      order: { sortOrder: 'ASC', createdAt: 'ASC' },
+    });
+
     return {
       id: user.id,
       authUserId: user.authUserId,
@@ -101,10 +129,29 @@ export class UsersService {
             companyName: user.companyProfile.companyName,
             jobTitle: user.companyProfile.jobTitle,
             businessNiche: user.companyProfile.businessNiche,
+            websiteUrl: user.companyProfile.websiteUrl,
+            instagramUsername: user.companyProfile.instagramUsername,
+            tiktokUsername: user.companyProfile.tiktokUsername,
             createdAt: user.companyProfile.createdAt,
             updatedAt: user.companyProfile.updatedAt,
           }
         : null,
+      portfolio: {
+        id: portfolio.id,
+        userId: user.id,
+        media: media.map((item) => ({
+          id: item.id,
+          type: item.type,
+          url: item.publicUrl,
+          thumbnailUrl: item.thumbnailUrl,
+          sortOrder: item.sortOrder,
+          status: item.status,
+          createdAt: item.createdAt,
+          updatedAt: item.updatedAt,
+        })),
+        createdAt: portfolio.createdAt,
+        updatedAt: portfolio.updatedAt,
+      },
     };
   }
 }

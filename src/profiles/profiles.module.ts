@@ -7,12 +7,14 @@ import { ProfilesService } from './profiles.service';
 import { ProfilesController } from './profiles.controller';
 import { UsersModule } from '../users/users.module';
 import { AuthModule } from '../auth/auth.module';
+import { PortfolioModule } from '../portfolio/portfolio.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Profile, CreatorProfile, CompanyProfile]),
     UsersModule,
     AuthModule,
+    PortfolioModule,
   ],
   controllers: [ProfilesController],
   providers: [ProfilesService],

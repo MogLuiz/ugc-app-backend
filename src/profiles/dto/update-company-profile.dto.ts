@@ -25,4 +25,19 @@ export class UpdateCompanyProfileDto {
   @IsString()
   @MaxLength(255)
   businessNiche?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  websiteUrl?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  instagramUsername?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  tiktokUsername?: string;
 }
