@@ -36,9 +36,14 @@ export class ProfilesService {
     const profile = await this.profileRepo.findOne({ where: { userId: user.id } });
     if (!profile) throw new NotFoundException('Perfil não encontrado');
 
-    Object.assign(profile, dto);
+    const { phone, ...profileDto } = dto;
+    Object.assign(profile, profileDto);
     if (dto.birthDate) profile.birthDate = new Date(dto.birthDate);
     await this.profileRepo.save(profile);
+
+    if (phone !== undefined) {
+      await this.usersRepository.updatePhone(user.id, phone || null);
+    }
 
     return this.getMe(authUserId);
   }

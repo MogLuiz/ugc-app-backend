@@ -31,4 +31,8 @@ export class UsersRepository {
     const user = this.repo.create(data);
     return this.repo.save(user);
   }
+
+  async updatePhone(userId: string, phone: string | null): Promise<void> {
+    await this.repo.update(userId, { phone });
+  }
 }
