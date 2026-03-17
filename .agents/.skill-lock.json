@@ -1,0 +1,15 @@
+{
+  "version": 2,
+  "skills": {
+    "tlc-spec-driven": {
+      "name": "tlc-spec-driven",
+      "source": "local",
+      "path": "skills/tlc-spec-driven",
+      "contentHash": "f869d9d91ad0ba14085d084d56d6b9e17a714b3c1f61a37a3c806ed91d0795e8",
+      "installedAt": "2026-03-17T11:48:43.282Z",
+      "updatedAt": "2026-03-17T11:48:43.313Z",
+      "method": "copy",
+      "global": false
+    }
+  }
+}

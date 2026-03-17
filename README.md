@@ -66,4 +66,8 @@ Backend MVP que conecta criadores de conteúdo e empresas.
 3. Frontend: chama `POST /users/bootstrap` com `Authorization: Bearer <token>` e body `{ "role": "CREATOR" | "COMPANY" }`
 4. Backend: valida JWT, cria ou retorna user + profiles
 5. Rotas protegidas: envie o Bearer token em todas as requisições
-# ugc-app-backend
+
+## Documentação
+
+- **[docs/FRONTEND_INTEGRACAO.md](docs/FRONTEND_INTEGRACAO.md)** — Guia completo para conectar o frontend ao Supabase e integrar com o backend
+- **[FLUXO_AUTENTICACAO.md](FLUXO_AUTENTICACAO.md)** — Análise do fluxo de autenticação e criação de perfil
