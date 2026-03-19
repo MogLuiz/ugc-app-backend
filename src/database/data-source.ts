@@ -4,6 +4,8 @@ import { BootstrapSchema1731710000000 } from './migrations/1731710000000-Bootstr
 import { AddCompanyPortfolioMedia1763700000000 } from './migrations/1763700000000-AddCompanyPortfolioMedia';
 import { AddSchedulingCore1765400000000 } from './migrations/1765400000000-AddSchedulingCore';
 import { HardenSchedulingContracts1765600000000 } from './migrations/1765600000000-HardenSchedulingContracts';
+import { AddCreatorJobTypes1765800000000 } from './migrations/1765800000000-AddCreatorJobTypes';
+import { AddJobTypePriceCents1765900000000 } from './migrations/1765900000000-AddJobTypePriceCents';
 
 config();
 
@@ -20,6 +22,8 @@ export const AppDataSource = new DataSource(
           AddCompanyPortfolioMedia1763700000000,
           AddSchedulingCore1765400000000,
           HardenSchedulingContracts1765600000000,
+          AddCreatorJobTypes1765800000000,
+          AddJobTypePriceCents1765900000000,
         ],
         synchronize: false,
         logging: process.env.NODE_ENV === 'development',
@@ -38,6 +42,8 @@ export const AppDataSource = new DataSource(
           AddCompanyPortfolioMedia1763700000000,
           AddSchedulingCore1765400000000,
           HardenSchedulingContracts1765600000000,
+          AddCreatorJobTypes1765800000000,
+          AddJobTypePriceCents1765900000000,
         ],
         synchronize: false,
         logging: process.env.NODE_ENV === 'development',

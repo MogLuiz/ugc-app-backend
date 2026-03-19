@@ -35,6 +35,31 @@
 
 Retorna a base estruturada para a futura integracao da UI de calendario.
 
+### Campos preferenciais do contrato
+
+Estes sao os campos que novos consumidores devem preferir:
+
+- `id`
+- `title`
+- `status`
+- `mode`
+- `startDateTime`
+- `endDateTime`
+- `jobTypeName`
+- `durationMinutes`
+
+### Campos legados temporarios
+
+Os campos abaixo permanecem temporariamente por compatibilidade com o frontend atual:
+
+- `description`
+- `origin`
+- `notes`
+- `jobType`
+- `companyUserId`
+- `creatorUserId`
+- `isBlocking`
+
 ```json
 {
   "creatorUserId": "uuid",
@@ -53,8 +78,9 @@ Retorna a base estruturada para a futura integracao da UI de calendario.
       "mode": "PRESENTIAL | REMOTE | HYBRID",
       "startDateTime": "ISO-8601",
       "endDateTime": "ISO-8601",
+      "jobTypeName": "Workshop Presencial",
       "durationMinutes": 90,
-      "origin": "marketplace",
+      "origin": "COMPANY_REQUEST | MANUAL_INTERNAL | SYSTEM",
       "notes": "string | null",
       "jobType": {
         "id": "uuid",

@@ -10,6 +10,7 @@ import { PortfolioMedia } from '../portfolio/entities/portfolio-media.entity';
 import { AvailabilityRule } from '../availability/entities/availability-rule.entity';
 import { JobType } from '../job-types/entities/job-type.entity';
 import { Booking } from '../bookings/entities/booking.entity';
+import { CreatorJobType } from '../creator-job-types/entities/creator-job-type.entity';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { Booking } from '../bookings/entities/booking.entity';
               PortfolioMedia,
               AvailabilityRule,
               JobType,
+              CreatorJobType,
               Booking,
             ],
             synchronize: false,
@@ -54,6 +56,7 @@ import { Booking } from '../bookings/entities/booking.entity';
             PortfolioMedia,
             AvailabilityRule,
             JobType,
+            CreatorJobType,
             Booking,
           ],
           synchronize: false,

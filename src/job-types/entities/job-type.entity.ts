@@ -23,6 +23,9 @@ export class JobType {
   @Column({ name: 'duration_minutes', type: 'int' })
   durationMinutes: number;
 
+  @Column({ type: 'decimal', precision: 10, scale: 2, default: 0, transformer: { to: (v: number) => v, from: (v: string) => parseFloat(v) } })
+  price: number;
+
   @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive: boolean;
 

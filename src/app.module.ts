@@ -10,6 +10,7 @@ import { PortfolioModule } from './portfolio/portfolio.module';
 import { AvailabilityModule } from './availability/availability.module';
 import { JobTypesModule } from './job-types/job-types.module';
 import { BookingsModule } from './bookings/bookings.module';
+import { CreatorJobTypesModule } from './creator-job-types/creator-job-types.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { BookingsModule } from './bookings/bookings.module';
     PortfolioModule,
     AvailabilityModule,
     JobTypesModule,
+    CreatorJobTypesModule,
     BookingsModule,
     UploadsModule,
     HealthModule,
