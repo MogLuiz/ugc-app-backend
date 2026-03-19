@@ -12,6 +12,7 @@ import { User } from '../../users/entities/user.entity';
 import { JobType } from '../../job-types/entities/job-type.entity';
 import { JobMode } from '../../common/enums/job-mode.enum';
 import { BookingStatus } from '../../common/enums/booking-status.enum';
+import { BookingOrigin } from '../../common/enums/booking-origin.enum';
 
 @Entity('bookings')
 @Index('IDX_bookings_creator_start_date_time', ['creatorUserId', 'startDateTime'])
@@ -50,8 +51,8 @@ export class Booking {
   @Column({ name: 'end_date_time', type: 'timestamptz' })
   endDateTime: Date;
 
-  @Column({ type: 'varchar', length: 100 })
-  origin: string;
+  @Column({ type: 'enum', enum: BookingOrigin })
+  origin: BookingOrigin;
 
   @Column({ type: 'text', nullable: true })
   notes: string | null;

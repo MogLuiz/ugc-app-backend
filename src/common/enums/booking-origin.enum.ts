@@ -1,0 +1,5 @@
+export enum BookingOrigin {
+  COMPANY_REQUEST = 'COMPANY_REQUEST',
+  MANUAL_INTERNAL = 'MANUAL_INTERNAL',
+  SYSTEM = 'SYSTEM',
+}

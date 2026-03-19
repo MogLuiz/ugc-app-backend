@@ -34,7 +34,7 @@ export class BookingsService {
     private readonly jobTypesService: JobTypesService,
     private readonly usersRepository: UsersRepository,
     private readonly bookingValidationService: BookingValidationService,
-  ) {}
+  ) { }
 
   async createBooking(user: AuthUser, dto: CreateBookingDto) {
     const startDateTime = parseDateOrThrow(dto.startDateTime, 'startDateTime');
@@ -254,6 +254,7 @@ export class BookingsService {
       mode: booking.mode,
       startDateTime: booking.startDateTime.toISOString(),
       endDateTime: booking.endDateTime.toISOString(),
+      jobTypeName: booking.jobTypeNameSnapshot,
       durationMinutes: booking.durationMinutesSnapshot,
       origin: booking.origin,
       notes: booking.notes,

@@ -1,5 +1,6 @@
 import { ForbiddenException } from '@nestjs/common';
 import { BookingStatus } from '../common/enums/booking-status.enum';
+import { BookingOrigin } from '../common/enums/booking-origin.enum';
 import { JobMode } from '../common/enums/job-mode.enum';
 import { UserRole } from '../common/enums/user-role.enum';
 import { BookingsService } from './bookings.service';
@@ -99,7 +100,7 @@ describe('BookingsService', () => {
       mode: JobMode.REMOTE,
       startDateTime: new Date('2099-03-17T13:00:00.000Z'),
       endDateTime: new Date('2099-03-17T14:00:00.000Z'),
-      origin: 'marketplace',
+      origin: BookingOrigin.COMPANY_REQUEST,
       notes: null,
       jobTypeId: 'job-type-1',
       jobTypeNameSnapshot: 'Briefing Remoto',
@@ -112,6 +113,26 @@ describe('BookingsService', () => {
       ...booking,
       updatedAt: new Date('2099-03-17T10:30:00.000Z'),
     }));
+
+    usersRepository.findByAuthUserIdWithProfiles.mockResolvedValue(creatorUser);
+    bookingsRepository.findCalendarBookings.mockResolvedValue([
+      {
+        id: 'booking-1',
+        title: 'Briefing',
+        description: 'Discussão inicial',
+        status: BookingStatus.PENDING,
+        mode: JobMode.REMOTE,
+        startDateTime: new Date('2099-03-17T13:00:00.000Z'),
+        endDateTime: new Date('2099-03-17T14:00:00.000Z'),
+        origin: BookingOrigin.COMPANY_REQUEST,
+        notes: null,
+        jobTypeId: 'job-type-1',
+        jobTypeNameSnapshot: 'Briefing Remoto',
+        durationMinutesSnapshot: 60,
+        companyUserId: companyUser.id,
+        creatorUserId: creatorUser.id,
+      },
+    ]);
   });
 
   it('cria um booking válido em transação', async () => {
@@ -123,7 +144,7 @@ describe('BookingsService', () => {
         title: 'Briefing',
         description: 'Discussão inicial',
         startDateTime: '2099-03-17T13:00:00.000Z',
-        origin: 'marketplace',
+        origin: BookingOrigin.COMPANY_REQUEST,
         notes: 'Levar referência',
       },
     );
@@ -172,7 +193,7 @@ describe('BookingsService', () => {
       mode: JobMode.REMOTE,
       startDateTime: new Date('2099-03-17T13:00:00.000Z'),
       endDateTime: new Date('2099-03-17T14:00:00.000Z'),
-      origin: 'marketplace',
+      origin: BookingOrigin.COMPANY_REQUEST,
       notes: null,
       jobTypeId: 'job-type-1',
       jobTypeNameSnapshot: 'Briefing Remoto',
@@ -220,5 +241,32 @@ describe('BookingsService', () => {
     ).rejects.toThrow(
       'Usuário não encontrado. Complete o cadastro em POST /users/bootstrap',
     );
+  });
+
+  it('retorna o contrato enriquecido do calendario mantendo compatibilidade', async () => {
+    const result = await service.getCreatorCalendar(
+      { authUserId: creatorUser.authUserId },
+      {
+        start: '2099-03-17T00:00:00.000Z',
+        end: '2099-03-24T00:00:00.000Z',
+      },
+    );
+
+    expect(result.bookings[0]).toMatchObject({
+      id: 'booking-1',
+      title: 'Briefing',
+      status: BookingStatus.PENDING,
+      mode: JobMode.REMOTE,
+      startDateTime: '2099-03-17T13:00:00.000Z',
+      endDateTime: '2099-03-17T14:00:00.000Z',
+      jobTypeName: 'Briefing Remoto',
+      durationMinutes: 60,
+      jobType: {
+        id: 'job-type-1',
+        name: 'Briefing Remoto',
+      },
+      origin: BookingOrigin.COMPANY_REQUEST,
+      isBlocking: true,
+    });
   });
 });

@@ -115,6 +115,12 @@ export class AvailabilityService {
       }
 
       if (!day.isActive) {
+        if (day.startTime !== null || day.endTime !== null) {
+          throw new BadRequestException(
+            'Quando isActive = false, startTime e endTime devem ser null',
+          );
+        }
+
         return {
           dayOfWeek,
           isActive: false,
@@ -124,7 +130,9 @@ export class AvailabilityService {
       }
 
       if (!day.startTime || !day.endTime) {
-        throw new BadRequestException('Dias ativos precisam informar startTime e endTime');
+        throw new BadRequestException(
+          'Quando isActive = true, startTime e endTime são obrigatórios',
+        );
       }
 
       ensureStartIsBeforeEnd(day.startTime, day.endTime);

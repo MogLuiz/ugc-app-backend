@@ -6,6 +6,7 @@ import {
   JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
+  Check,
   Unique,
   UpdateDateColumn,
 } from 'typeorm';
@@ -13,6 +14,10 @@ import { User } from '../../users/entities/user.entity';
 import { AvailabilityDayOfWeek } from '../../common/enums/availability-day-of-week.enum';
 
 @Entity('availability_rules')
+@Check(
+  'CHK_availability_rules_active_window',
+  `("is_active" = false AND "start_time" IS NULL AND "end_time" IS NULL) OR ("is_active" = true AND "start_time" IS NOT NULL AND "end_time" IS NOT NULL AND "start_time" < "end_time")`,
+)
 @Unique('UQ_availability_rules_creator_day', ['creatorUserId', 'dayOfWeek'])
 @Index('IDX_availability_rules_creator_day', ['creatorUserId', 'dayOfWeek'])
 export class AvailabilityRule {

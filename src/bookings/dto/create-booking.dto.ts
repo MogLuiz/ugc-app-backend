@@ -1,4 +1,5 @@
-import { IsDateString, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
+import { IsDateString, IsEnum, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
+import { BookingOrigin } from '../../common/enums/booking-origin.enum';
 
 export class CreateBookingDto {
   @IsUUID()
@@ -18,9 +19,8 @@ export class CreateBookingDto {
   @IsDateString()
   startDateTime: string;
 
-  @IsString()
-  @MaxLength(100)
-  origin: string;
+  @IsEnum(BookingOrigin)
+  origin: BookingOrigin;
 
   @IsOptional()
   @IsString()
