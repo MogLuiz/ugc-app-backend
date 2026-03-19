@@ -7,6 +7,9 @@ import { ProfilesModule } from './profiles/profiles.module';
 import { UploadsModule } from './uploads/uploads.module';
 import { HealthModule } from './health/health.module';
 import { PortfolioModule } from './portfolio/portfolio.module';
+import { AvailabilityModule } from './availability/availability.module';
+import { JobTypesModule } from './job-types/job-types.module';
+import { BookingsModule } from './bookings/bookings.module';
 
 @Module({
   imports: [
@@ -16,6 +19,9 @@ import { PortfolioModule } from './portfolio/portfolio.module';
     UsersModule,
     ProfilesModule,
     PortfolioModule,
+    AvailabilityModule,
+    JobTypesModule,
+    BookingsModule,
     UploadsModule,
     HealthModule,
   ],

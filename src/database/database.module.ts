@@ -7,6 +7,9 @@ import { CreatorProfile } from '../profiles/entities/creator-profile.entity';
 import { CompanyProfile } from '../profiles/entities/company-profile.entity';
 import { Portfolio } from '../portfolio/entities/portfolio.entity';
 import { PortfolioMedia } from '../portfolio/entities/portfolio-media.entity';
+import { AvailabilityRule } from '../availability/entities/availability-rule.entity';
+import { JobType } from '../job-types/entities/job-type.entity';
+import { Booking } from '../bookings/entities/booking.entity';
 
 @Module({
   imports: [
@@ -17,7 +20,17 @@ import { PortfolioMedia } from '../portfolio/entities/portfolio-media.entity';
           return {
             type: 'postgres',
             url: databaseUrl,
-            entities: [User, Profile, CreatorProfile, CompanyProfile, Portfolio, PortfolioMedia],
+            entities: [
+              User,
+              Profile,
+              CreatorProfile,
+              CompanyProfile,
+              Portfolio,
+              PortfolioMedia,
+              AvailabilityRule,
+              JobType,
+              Booking,
+            ],
             synchronize: false,
             logging: configService.get<string>('NODE_ENV') === 'development',
             ssl: { rejectUnauthorized: false },
@@ -32,7 +45,17 @@ import { PortfolioMedia } from '../portfolio/entities/portfolio-media.entity';
           username: configService.get<string>('DB_USERNAME'),
           password: configService.get<string>('DB_PASSWORD'),
           database: configService.get<string>('DB_DATABASE'),
-          entities: [User, Profile, CreatorProfile, CompanyProfile, Portfolio, PortfolioMedia],
+          entities: [
+            User,
+            Profile,
+            CreatorProfile,
+            CompanyProfile,
+            Portfolio,
+            PortfolioMedia,
+            AvailabilityRule,
+            JobType,
+            Booking,
+          ],
           synchronize: false,
           logging: configService.get<string>('NODE_ENV') === 'development',
           ...(isSupabase && {
