@@ -12,6 +12,8 @@ import { UpdateProfileDto } from './dto/update-profile.dto';
 import { UpdateCreatorProfileDto } from './dto/update-creator-profile.dto';
 import { UpdateCompanyProfileDto } from './dto/update-company-profile.dto';
 import { PortfolioService } from '../portfolio/portfolio.service';
+import { AvailabilityRepository } from '../availability/availability.repository';
+import { AvailabilityDayOfWeek } from '../common/enums/availability-day-of-week.enum';
 import {
   ListMarketplaceCreatorsDto,
   type MarketplaceSortBy,
@@ -20,6 +22,8 @@ import {
 const DEFAULT_MARKETPLACE_PAGE = 1;
 const DEFAULT_MARKETPLACE_LIMIT = 8;
 const MAX_MARKETPLACE_LIMIT = 24;
+const DEFAULT_WORKING_START = '09:00:00';
+const DEFAULT_WORKING_END = '18:00:00';
 
 @Injectable()
 export class ProfilesService {
@@ -32,6 +36,7 @@ export class ProfilesService {
     @InjectRepository(CompanyProfile)
     private companyProfileRepo: Repository<CompanyProfile>,
     private portfolioService: PortfolioService,
+    private availabilityRepository: AvailabilityRepository,
   ) {}
 
   async getMe(authUserId: string) {
@@ -148,6 +153,52 @@ export class ProfilesService {
     };
   }
 
+  async getMarketplaceCreatorDetail(authUser: AuthUser, creatorId: string) {
+    const user = await this.getUserOrThrow(authUser.authUserId);
+    if (user.role !== UserRole.COMPANY) {
+      throw new ForbiddenException('Apenas empresas podem acessar detalhes de creators');
+    }
+
+    const creator = await this.usersRepository.findMarketplaceCreatorById(creatorId);
+    if (!creator) {
+      throw new NotFoundException('Creator não encontrado');
+    }
+
+    const portfolio = await this.portfolioService.buildPortfolioPayload(creatorId);
+    const availabilityRules = await this.availabilityRepository.findByCreatorUserId(creatorId);
+    const activeRules = availabilityRules.filter(
+      (rule) => rule.isActive && rule.startTime && rule.endTime,
+    );
+
+    const workingHours = this.getWorkingHours(activeRules);
+
+    return {
+      ...creator,
+      portfolio,
+      availability: {
+        timezone: 'America/Sao_Paulo',
+        workingHours,
+        days: [
+          AvailabilityDayOfWeek.SUNDAY,
+          AvailabilityDayOfWeek.MONDAY,
+          AvailabilityDayOfWeek.TUESDAY,
+          AvailabilityDayOfWeek.WEDNESDAY,
+          AvailabilityDayOfWeek.THURSDAY,
+          AvailabilityDayOfWeek.FRIDAY,
+          AvailabilityDayOfWeek.SATURDAY,
+        ].map((dayOfWeek) => {
+          const rule = availabilityRules.find((item) => item.dayOfWeek === dayOfWeek);
+          return {
+            dayOfWeek,
+            isActive: rule?.isActive ?? false,
+            startTime: rule?.startTime ?? null,
+            endTime: rule?.endTime ?? null,
+          };
+        }),
+      },
+    };
+  }
+
   private async getUserOrThrow(authUserId: string): Promise<User> {
     const user = await this.usersRepository.findByAuthUserIdWithProfiles(authUserId);
     if (!user) {
@@ -229,5 +280,33 @@ export class ProfilesService {
     }
 
     return 'relevancia';
+  }
+
+  private getWorkingHours(
+    rules: Array<{ startTime: string | null; endTime: string | null }>,
+  ) {
+    if (rules.length === 0) {
+      return {
+        start: DEFAULT_WORKING_START.slice(0, 5),
+        end: DEFAULT_WORKING_END.slice(0, 5),
+      };
+    }
+
+    let minStart = rules[0]?.startTime ?? DEFAULT_WORKING_START;
+    let maxEnd = rules[0]?.endTime ?? DEFAULT_WORKING_END;
+
+    for (const rule of rules) {
+      if (rule.startTime && rule.startTime < minStart) {
+        minStart = rule.startTime;
+      }
+      if (rule.endTime && rule.endTime > maxEnd) {
+        maxEnd = rule.endTime;
+      }
+    }
+
+    return {
+      start: minStart.slice(0, 5),
+      end: maxEnd.slice(0, 5),
+    };
   }
 }

@@ -8,6 +8,7 @@ import { ProfilesController } from './profiles.controller';
 import { UsersModule } from '../users/users.module';
 import { AuthModule } from '../auth/auth.module';
 import { PortfolioModule } from '../portfolio/portfolio.module';
+import { AvailabilityModule } from '../availability/availability.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { PortfolioModule } from '../portfolio/portfolio.module';
     UsersModule,
     AuthModule,
     PortfolioModule,
+    AvailabilityModule,
   ],
   controllers: [ProfilesController],
   providers: [ProfilesService],

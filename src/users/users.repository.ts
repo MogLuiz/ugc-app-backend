@@ -18,6 +18,8 @@ export type MarketplaceCreatorListItem = {
   minPrice: number | null;
 };
 
+export type MarketplaceCreatorDetailItem = MarketplaceCreatorListItem;
+
 export type ListMarketplaceCreatorsParams = {
   search?: string;
   serviceTypeId?: string;
@@ -199,6 +201,109 @@ export class UsersRepository {
               : parseFloat(row.minPrice),
       })),
       total,
+    };
+  }
+
+  async findMarketplaceCreatorById(
+    creatorId: string,
+  ): Promise<MarketplaceCreatorDetailItem | null> {
+    const row = await this.repo
+      .createQueryBuilder('user')
+      .innerJoin('user.profile', 'profile')
+      .innerJoin('user.creatorProfile', 'creatorProfile')
+      .leftJoin(
+        'creator_job_types',
+        'cjt',
+        'cjt.creator_profile_user_id = user.id AND cjt.is_active = true',
+      )
+      .leftJoin(
+        'job_types',
+        'jt',
+        'jt.id = cjt.job_type_id AND jt.is_active = true',
+      )
+      .where('user.id = :creatorId', { creatorId })
+      .andWhere('user.role = :role', { role: UserRole.CREATOR })
+      .select('user.id', 'id')
+      .addSelect('profile.name', 'name')
+      .addSelect('profile.photo_url', 'avatarUrl')
+      .addSelect('profile.photo_url', 'coverImageUrl')
+      .addSelect('profile.rating', 'rating')
+      .addSelect('profile.bio', 'bio')
+      .addSelect(
+        `
+          CASE
+            WHEN profile.address_city IS NOT NULL AND profile.address_state IS NOT NULL
+              THEN profile.address_city || '/' || profile.address_state
+            WHEN profile.address_city IS NOT NULL
+              THEN profile.address_city
+            WHEN profile.address_state IS NOT NULL
+              THEN profile.address_state
+            ELSE 'Localização não informada'
+          END
+        `,
+        'location',
+      )
+      .addSelect(
+        `COALESCE(NULLIF(MIN(jt.name), ''), 'Serviços UGC')`,
+        'niche',
+      )
+      .addSelect(
+        `
+          ARRAY_REMOVE(
+            ARRAY_AGG(DISTINCT jt.name),
+            NULL
+          )
+        `,
+        'tags',
+      )
+      .addSelect(
+        `
+          MIN(
+            CASE
+              WHEN cjt.base_price_cents IS NOT NULL
+                THEN cjt.base_price_cents::decimal / 100
+              ELSE jt.price
+            END
+          )
+        `,
+        'minPrice',
+      )
+      .groupBy('user.id')
+      .addGroupBy('profile.user_id')
+      .getRawOne<{
+        id: string;
+        name: string;
+        avatarUrl: string | null;
+        coverImageUrl: string | null;
+        rating: string | number;
+        location: string;
+        bio: string | null;
+        niche: string | null;
+        tags: string[] | null;
+        minPrice: string | number | null;
+      }>();
+
+    if (!row) {
+      return null;
+    }
+
+    return {
+      id: row.id,
+      name: row.name,
+      avatarUrl: row.avatarUrl,
+      coverImageUrl: row.coverImageUrl,
+      rating:
+        typeof row.rating === 'number' ? row.rating : parseFloat(row.rating ?? '0'),
+      location: row.location,
+      bio: row.bio,
+      tags: Array.isArray(row.tags) ? row.tags.filter(Boolean) : [],
+      niche: row.niche || 'Serviços UGC',
+      minPrice:
+        row.minPrice == null
+          ? null
+          : typeof row.minPrice === 'number'
+            ? row.minPrice
+            : parseFloat(row.minPrice),
     };
   }
 }

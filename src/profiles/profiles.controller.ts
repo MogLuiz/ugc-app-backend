@@ -26,6 +26,14 @@ export class ProfilesController {
     return this.profilesService.listMarketplaceCreators(user, query);
   }
 
+  @Get('creators/:creatorId')
+  getMarketplaceCreatorDetail(
+    @CurrentUser() user: AuthUser,
+    @Param('creatorId') creatorId: string,
+  ) {
+    return this.profilesService.getMarketplaceCreatorDetail(user, creatorId);
+  }
+
   @Patch('me')
   updateProfile(
     @CurrentUser() user: AuthUser,
