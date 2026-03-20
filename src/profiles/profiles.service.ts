@@ -1,6 +1,7 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import type { AuthUser } from '../common/interfaces/auth-user.interface';
 import { User } from '../users/entities/user.entity';
 import { Profile } from './entities/profile.entity';
 import { CreatorProfile } from './entities/creator-profile.entity';
@@ -11,6 +12,14 @@ import { UpdateProfileDto } from './dto/update-profile.dto';
 import { UpdateCreatorProfileDto } from './dto/update-creator-profile.dto';
 import { UpdateCompanyProfileDto } from './dto/update-company-profile.dto';
 import { PortfolioService } from '../portfolio/portfolio.service';
+import {
+  ListMarketplaceCreatorsDto,
+  type MarketplaceSortBy,
+} from './dto/list-marketplace-creators.dto';
+
+const DEFAULT_MARKETPLACE_PAGE = 1;
+const DEFAULT_MARKETPLACE_LIMIT = 8;
+const MAX_MARKETPLACE_LIMIT = 24;
 
 @Injectable()
 export class ProfilesService {
@@ -103,6 +112,42 @@ export class ProfilesService {
     return this.getMe(authUserId);
   }
 
+  async listMarketplaceCreators(
+    authUser: AuthUser,
+    query: ListMarketplaceCreatorsDto,
+  ) {
+    const user = await this.getUserOrThrow(authUser.authUserId);
+    if (user.role !== UserRole.COMPANY) {
+      throw new ForbiddenException(
+        'Apenas empresas podem acessar o marketplace de creators',
+      );
+    }
+
+    const page = this.parsePositiveInt(query.page, DEFAULT_MARKETPLACE_PAGE);
+    const limit = Math.min(
+      this.parsePositiveInt(query.limit, DEFAULT_MARKETPLACE_LIMIT),
+      MAX_MARKETPLACE_LIMIT,
+    );
+    const sortBy = this.normalizeSortBy(query.sortBy);
+    const result = await this.usersRepository.listMarketplaceCreators({
+      search: query.search?.trim() || undefined,
+      serviceTypeId: query.serviceTypeId,
+      sortBy,
+      page,
+      limit,
+    });
+
+    return {
+      items: result.items,
+      pagination: {
+        page,
+        limit,
+        total: result.total,
+        totalPages: Math.max(1, Math.ceil(result.total / limit)),
+      },
+    };
+  }
+
   private async getUserOrThrow(authUserId: string): Promise<User> {
     const user = await this.usersRepository.findByAuthUserIdWithProfiles(authUserId);
     if (!user) {
@@ -130,6 +175,7 @@ export class ProfilesService {
             birthDate: user.profile.birthDate,
             gender: user.profile.gender,
             photoUrl: user.profile.photoUrl,
+            rating: user.profile.rating,
             addressStreet: user.profile.addressStreet,
             addressNumber: user.profile.addressNumber,
             addressCity: user.profile.addressCity,
@@ -170,5 +216,18 @@ export class ProfilesService {
         : null,
       portfolio,
     };
+  }
+
+  private parsePositiveInt(value: string | undefined, fallback: number) {
+    const parsed = Number.parseInt(value ?? '', 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+  }
+
+  private normalizeSortBy(value?: string): MarketplaceSortBy {
+    if (value === 'preco' || value === 'avaliacao') {
+      return value;
+    }
+
+    return 'relevancia';
   }
 }

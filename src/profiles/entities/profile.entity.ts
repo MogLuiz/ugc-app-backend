@@ -26,6 +26,18 @@ export class Profile {
   @Column({ name: 'photo_url', type: 'varchar', length: 500, nullable: true })
   photoUrl: string | null;
 
+  @Column({
+    type: 'decimal',
+    precision: 3,
+    scale: 2,
+    default: 0,
+    transformer: {
+      to: (value?: number | null) => value ?? 0,
+      from: (value: string) => parseFloat(value),
+    },
+  })
+  rating: number;
+
   @Column({ name: 'address_street', type: 'varchar', length: 255, nullable: true })
   addressStreet: string | null;
 
