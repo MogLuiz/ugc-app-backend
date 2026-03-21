@@ -194,6 +194,7 @@ export class ProfilesService {
           return {
             jobTypeId: item.jobTypeId,
             name: item.jobType.name,
+            description: item.jobType.description ?? null,
             mode: item.jobType.mode,
             durationMinutes: item.jobType.durationMinutes,
             basePrice: basePriceReais,

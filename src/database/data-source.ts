@@ -8,6 +8,7 @@ import { AddCreatorJobTypes1765800000000 } from './migrations/1765800000000-AddC
 import { AddJobTypePriceCents1765900000000 } from './migrations/1765900000000-AddJobTypePriceCents';
 import { AddProfileRating1766000000000 } from './migrations/1766000000000-AddProfileRating';
 import { AddContractRequestsCore1766100000000 } from './migrations/1766100000000-AddContractRequestsCore';
+import { AddJobTypeDescription1766200000000 } from './migrations/1766200000000-AddJobTypeDescription';
 
 config();
 
@@ -28,6 +29,7 @@ export const AppDataSource = new DataSource(
           AddJobTypePriceCents1765900000000,
           AddProfileRating1766000000000,
           AddContractRequestsCore1766100000000,
+          AddJobTypeDescription1766200000000,
         ],
         synchronize: false,
         logging: process.env.NODE_ENV === 'development',
@@ -50,6 +52,7 @@ export const AppDataSource = new DataSource(
           AddJobTypePriceCents1765900000000,
           AddProfileRating1766000000000,
           AddContractRequestsCore1766100000000,
+          AddJobTypeDescription1766200000000,
         ],
         synchronize: false,
         logging: process.env.NODE_ENV === 'development',

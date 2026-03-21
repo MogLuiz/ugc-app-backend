@@ -17,6 +17,9 @@ export class JobType {
   @Column({ type: 'varchar', length: 120, unique: true })
   name: string;
 
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  description: string | null;
+
   @Column({ type: 'enum', enum: JobMode })
   mode: JobMode;
 
