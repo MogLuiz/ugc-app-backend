@@ -17,6 +17,6 @@ import { CreatorJobTypesController } from './creator-job-types.controller';
   ],
   controllers: [CreatorJobTypesController],
   providers: [CreatorJobTypesRepository, CreatorJobTypesService],
-  exports: [CreatorJobTypesService],
+  exports: [CreatorJobTypesRepository, CreatorJobTypesService],
 })
 export class CreatorJobTypesModule {}

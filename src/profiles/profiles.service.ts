@@ -18,6 +18,9 @@ import {
   ListMarketplaceCreatorsDto,
   type MarketplaceSortBy,
 } from './dto/list-marketplace-creators.dto';
+import { CreatorLocationService } from './services/creator-location.service';
+import { CreatorJobTypesRepository } from '../creator-job-types/creator-job-types.repository';
+import { JobMode } from '../common/enums/job-mode.enum';
 
 const DEFAULT_MARKETPLACE_PAGE = 1;
 const DEFAULT_MARKETPLACE_LIMIT = 8;
@@ -37,6 +40,8 @@ export class ProfilesService {
     private companyProfileRepo: Repository<CompanyProfile>,
     private portfolioService: PortfolioService,
     private availabilityRepository: AvailabilityRepository,
+    private creatorLocationService: CreatorLocationService,
+    private creatorJobTypesRepository: CreatorJobTypesRepository,
   ) {}
 
   async getMe(authUserId: string) {
@@ -59,6 +64,10 @@ export class ProfilesService {
 
     if (phone !== undefined) {
       await this.usersRepository.updatePhone(user.id, phone || null);
+    }
+
+    if (user.role === UserRole.CREATOR) {
+      await this.creatorLocationService.syncCoordinatesFromProfile(user.id, profile);
     }
 
     return this.getMe(authUserId);
@@ -166,6 +175,7 @@ export class ProfilesService {
 
     const portfolio = await this.portfolioService.buildPortfolioPayload(creatorId);
     const availabilityRules = await this.availabilityRepository.findByCreatorUserId(creatorId);
+    const creatorJobTypes = await this.creatorJobTypesRepository.findByCreator(creatorId);
     const activeRules = availabilityRules.filter(
       (rule) => rule.isActive && rule.startTime && rule.endTime,
     );
@@ -174,6 +184,22 @@ export class ProfilesService {
 
     return {
       ...creator,
+      services: creatorJobTypes
+        .filter((item) => item.jobType.mode === JobMode.PRESENTIAL)
+        .map((item) => {
+          const basePriceReais =
+            item.basePriceCents != null
+              ? item.basePriceCents / 100
+              : item.jobType.price;
+          return {
+            jobTypeId: item.jobTypeId,
+            name: item.jobType.name,
+            mode: item.jobType.mode,
+            durationMinutes: item.jobType.durationMinutes,
+            basePrice: basePriceReais,
+            currency: 'BRL',
+          };
+        }),
       portfolio,
       availability: {
         timezone: 'America/Sao_Paulo',
@@ -240,12 +266,16 @@ export class ProfilesService {
         : null,
       creatorProfile: user.creatorProfile
         ? {
+            autoAcceptBookings: user.creatorProfile.autoAcceptBookings,
             userId: user.creatorProfile.userId,
             cpf: user.creatorProfile.cpf,
             instagramUsername: user.creatorProfile.instagramUsername,
             tiktokUsername: user.creatorProfile.tiktokUsername,
             referralSource: user.creatorProfile.referralSource,
             portfolioUrl: user.creatorProfile.portfolioUrl,
+            serviceRadiusKm: user.creatorProfile.serviceRadiusKm,
+            latitude: user.creatorProfile.latitude,
+            longitude: user.creatorProfile.longitude,
             createdAt: user.creatorProfile.createdAt,
             updatedAt: user.creatorProfile.updatedAt,
           }

@@ -39,19 +39,23 @@ export class BookingsRepository {
     creatorUserId: string,
     startDateTime: Date,
     endDateTime: Date,
-    manager: EntityManager,
+    manager?: EntityManager,
   ): Promise<Booking[]> {
-    return this.repository(manager)
+    const query = this.repository(manager)
       .createQueryBuilder('booking')
-      .setLock('pessimistic_write')
       .where('booking.creator_user_id = :creatorUserId', { creatorUserId })
       .andWhere('booking.status IN (:...statuses)', {
         statuses: [BookingStatus.PENDING, BookingStatus.CONFIRMED],
       })
       .andWhere('booking.start_date_time < :endDateTime', { endDateTime })
       .andWhere('booking.end_date_time > :startDateTime', { startDateTime })
-      .orderBy('booking.start_date_time', 'ASC')
-      .getMany();
+      .orderBy('booking.start_date_time', 'ASC');
+
+    if (manager) {
+      query.setLock('pessimistic_write');
+    }
+
+    return query.getMany();
   }
 
   async findCalendarBookings(

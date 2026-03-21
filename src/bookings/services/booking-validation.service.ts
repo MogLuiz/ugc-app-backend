@@ -6,7 +6,6 @@ import {
 import { EntityManager } from 'typeorm';
 import { User } from '../../users/entities/user.entity';
 import { AvailabilityRepository } from '../../availability/availability.repository';
-import { BookingsRepository } from '../bookings.repository';
 import { UserRole } from '../../common/enums/user-role.enum';
 import {
   convertTimeToMinutes,
@@ -14,12 +13,13 @@ import {
   getSaoPauloDayOfWeek,
   getSaoPauloTime,
 } from '../../common/utils/scheduling-time.util';
+import { SchedulingConflictService } from '../../scheduling/scheduling-conflict.service';
 
 @Injectable()
 export class BookingValidationService {
   constructor(
     private readonly availabilityRepository: AvailabilityRepository,
-    private readonly bookingsRepository: BookingsRepository,
+    private readonly schedulingConflictService: SchedulingConflictService,
   ) {}
 
   async validateNewBooking(params: {
@@ -93,16 +93,12 @@ export class BookingValidationService {
       throw new BadRequestException('Booking fora da janela de disponibilidade do creator');
     }
 
-    const conflicts = await this.bookingsRepository.findOverlappingBlockingBookings(
-      creatorUser.id,
-      startDateTime,
-      endDateTime,
+    await this.schedulingConflictService.ensureNoConflicts({
+      creatorUserId: creatorUser.id,
+      startsAt: startDateTime,
+      endsAt: endDateTime,
       manager,
-    );
-
-    if (conflicts.length > 0) {
-      throw new BadRequestException('O creator já possui outro booking nesse intervalo');
-    }
+    });
   }
 
   ensureCreatorCanManageBooking(actorUserId: string, creatorUserId: string): void {

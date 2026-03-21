@@ -7,6 +7,7 @@ import { HardenSchedulingContracts1765600000000 } from './migrations/17656000000
 import { AddCreatorJobTypes1765800000000 } from './migrations/1765800000000-AddCreatorJobTypes';
 import { AddJobTypePriceCents1765900000000 } from './migrations/1765900000000-AddJobTypePriceCents';
 import { AddProfileRating1766000000000 } from './migrations/1766000000000-AddProfileRating';
+import { AddContractRequestsCore1766100000000 } from './migrations/1766100000000-AddContractRequestsCore';
 
 config();
 
@@ -26,6 +27,7 @@ export const AppDataSource = new DataSource(
           AddCreatorJobTypes1765800000000,
           AddJobTypePriceCents1765900000000,
           AddProfileRating1766000000000,
+          AddContractRequestsCore1766100000000,
         ],
         synchronize: false,
         logging: process.env.NODE_ENV === 'development',
@@ -47,6 +49,7 @@ export const AppDataSource = new DataSource(
           AddCreatorJobTypes1765800000000,
           AddJobTypePriceCents1765900000000,
           AddProfileRating1766000000000,
+          AddContractRequestsCore1766100000000,
         ],
         synchronize: false,
         logging: process.env.NODE_ENV === 'development',

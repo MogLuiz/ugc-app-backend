@@ -1,4 +1,4 @@
-import { IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsBoolean, IsNumber, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 
 export class UpdateCreatorProfileDto {
   @IsOptional()
@@ -25,4 +25,13 @@ export class UpdateCreatorProfileDto {
   @IsString()
   @MaxLength(500)
   portfolioUrl?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  autoAcceptBookings?: boolean;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  serviceRadiusKm?: number;
 }

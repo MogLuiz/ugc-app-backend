@@ -7,6 +7,11 @@ enum NodeEnv {
   production = 'production',
 }
 
+enum GeocodingStubMode {
+  always_fail = 'always_fail',
+  mock_success = 'mock_success',
+}
+
 export class EnvValidation {
   @IsEnum(NodeEnv)
   NODE_ENV: NodeEnv = NodeEnv.development;
@@ -85,6 +90,14 @@ export class EnvValidation {
   @IsOptional()
   @IsString()
   PORTFOLIO_VIDEO_BUCKET: string = 'portfolio-videos';
+
+  @IsOptional()
+  @IsEnum(GeocodingStubMode)
+  GEOCODING_STUB_MODE: GeocodingStubMode = GeocodingStubMode.always_fail;
+
+  @IsOptional()
+  @IsString()
+  GEOCODING_STUB_RESPONSES: string = '{}';
 }
 
 export function validateEnv(config: Record<string, unknown>): EnvValidation {

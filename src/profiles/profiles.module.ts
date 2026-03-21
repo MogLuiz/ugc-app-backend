@@ -9,6 +9,9 @@ import { UsersModule } from '../users/users.module';
 import { AuthModule } from '../auth/auth.module';
 import { PortfolioModule } from '../portfolio/portfolio.module';
 import { AvailabilityModule } from '../availability/availability.module';
+import { GeocodingModule } from '../geocoding/geocoding.module';
+import { CreatorLocationService } from './services/creator-location.service';
+import { CreatorJobTypesModule } from '../creator-job-types/creator-job-types.module';
 
 @Module({
   imports: [
@@ -17,9 +20,11 @@ import { AvailabilityModule } from '../availability/availability.module';
     AuthModule,
     PortfolioModule,
     AvailabilityModule,
+    GeocodingModule,
+    CreatorJobTypesModule,
   ],
   controllers: [ProfilesController],
-  providers: [ProfilesService],
+  providers: [ProfilesService, CreatorLocationService],
   exports: [ProfilesService],
 })
 export class ProfilesModule {}

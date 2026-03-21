@@ -11,6 +11,8 @@ import { AvailabilityRule } from '../availability/entities/availability-rule.ent
 import { JobType } from '../job-types/entities/job-type.entity';
 import { Booking } from '../bookings/entities/booking.entity';
 import { CreatorJobType } from '../creator-job-types/entities/creator-job-type.entity';
+import { ContractRequest } from '../contract-requests/entities/contract-request.entity';
+import { PlatformSetting } from '../platform-settings/entities/platform-setting.entity';
 
 @Module({
   imports: [
@@ -32,6 +34,8 @@ import { CreatorJobType } from '../creator-job-types/entities/creator-job-type.e
               JobType,
               CreatorJobType,
               Booking,
+              ContractRequest,
+              PlatformSetting,
             ],
             synchronize: false,
             logging: configService.get<string>('NODE_ENV') === 'development',
@@ -58,6 +62,8 @@ import { CreatorJobType } from '../creator-job-types/entities/creator-job-type.e
             JobType,
             CreatorJobType,
             Booking,
+            ContractRequest,
+            PlatformSetting,
           ],
           synchronize: false,
           logging: configService.get<string>('NODE_ENV') === 'development',

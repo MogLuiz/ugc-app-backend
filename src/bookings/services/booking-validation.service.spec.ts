@@ -1,4 +1,4 @@
-import { BookingStatus } from '../../common/enums/booking-status.enum';
+import { BadRequestException } from '@nestjs/common';
 import { AvailabilityDayOfWeek } from '../../common/enums/availability-day-of-week.enum';
 import { UserRole } from '../../common/enums/user-role.enum';
 import { BookingValidationService } from './booking-validation.service';
@@ -8,13 +8,13 @@ describe('BookingValidationService', () => {
     findByCreatorUserIdAndDayOfWeek: jest.fn(),
   };
 
-  const bookingsRepository = {
-    findOverlappingBlockingBookings: jest.fn(),
+  const schedulingConflictService = {
+    ensureNoConflicts: jest.fn(),
   };
 
   const service = new BookingValidationService(
     availabilityRepository as never,
-    bookingsRepository as never,
+    schedulingConflictService as never,
   );
 
   const companyUser = {
@@ -42,7 +42,7 @@ describe('BookingValidationService', () => {
       isActive: true,
     });
 
-    bookingsRepository.findOverlappingBlockingBookings.mockResolvedValue([]);
+    schedulingConflictService.ensureNoConflicts.mockResolvedValue(undefined);
   });
 
   it('valida um booking válido dentro da disponibilidade', async () => {
@@ -100,12 +100,11 @@ describe('BookingValidationService', () => {
   });
 
   it('rejeita booking com conflito de agenda', async () => {
-    bookingsRepository.findOverlappingBlockingBookings.mockResolvedValue([
-      {
-        id: 'booking-1',
-        status: BookingStatus.PENDING,
-      },
-    ]);
+    schedulingConflictService.ensureNoConflicts.mockRejectedValue(
+      new BadRequestException(
+        'O creator já possui um compromisso conflitante para o horário informado',
+      ),
+    );
 
     await expect(
       service.validateNewBooking({
@@ -115,11 +114,11 @@ describe('BookingValidationService', () => {
         endDateTime: baseEndDate,
         manager: {} as never,
       }),
-    ).rejects.toThrow('O creator já possui outro booking nesse intervalo');
+    ).rejects.toThrow('O creator já possui um compromisso conflitante para o horário informado');
   });
 
   it('permite booking encostado no fim de outro', async () => {
-    bookingsRepository.findOverlappingBlockingBookings.mockResolvedValue([]);
+    schedulingConflictService.ensureNoConflicts.mockResolvedValue(undefined);
 
     await expect(
       service.validateNewBooking({
@@ -133,30 +132,7 @@ describe('BookingValidationService', () => {
   });
 
   it('permite novo slot quando o booking anterior foi cancelado', async () => {
-    bookingsRepository.findOverlappingBlockingBookings.mockImplementation(
-      async (_creatorUserId: string, startDateTime: Date, endDateTime: Date) => {
-        const existingBookings = [
-          {
-            id: 'booking-cancelled',
-            status: BookingStatus.CANCELLED,
-            startDateTime: new Date('2099-03-17T13:30:00.000Z'),
-            endDateTime: new Date('2099-03-17T14:30:00.000Z'),
-          },
-        ];
-
-        return existingBookings.filter((booking) => {
-          const isBlocking =
-            booking.status === BookingStatus.PENDING ||
-            booking.status === BookingStatus.CONFIRMED;
-
-          return (
-            isBlocking &&
-            booking.startDateTime < endDateTime &&
-            booking.endDateTime > startDateTime
-          );
-        });
-      },
-    );
+    schedulingConflictService.ensureNoConflicts.mockResolvedValue(undefined);
 
     await expect(
       service.validateNewBooking({

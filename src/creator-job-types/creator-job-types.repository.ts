@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In } from 'typeorm';
+import { Repository } from 'typeorm';
 import { CreatorJobType } from './entities/creator-job-type.entity';
 
 @Injectable()
@@ -13,6 +13,20 @@ export class CreatorJobTypesRepository {
   async findByCreator(creatorProfileUserId: string): Promise<CreatorJobType[]> {
     return this.repo.find({
       where: { creatorProfileUserId, isActive: true },
+      relations: ['jobType'],
+    });
+  }
+
+  async findActiveByCreatorAndJobType(
+    creatorProfileUserId: string,
+    jobTypeId: string,
+  ): Promise<CreatorJobType | null> {
+    return this.repo.findOne({
+      where: {
+        creatorProfileUserId,
+        jobTypeId,
+        isActive: true,
+      },
       relations: ['jobType'],
     });
   }

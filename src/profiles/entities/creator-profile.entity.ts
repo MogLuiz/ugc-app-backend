@@ -11,6 +11,9 @@ import { User } from '../../users/entities/user.entity';
 
 @Entity('creator_profiles')
 export class CreatorProfile {
+  @Column({ name: 'auto_accept_bookings', type: 'boolean', default: false })
+  autoAcceptBookings: boolean;
+
   @PrimaryColumn({ name: 'user_id', type: 'uuid' })
   userId: string;
 
@@ -28,6 +31,43 @@ export class CreatorProfile {
 
   @Column({ name: 'portfolio_url', type: 'varchar', length: 500, nullable: true })
   portfolioUrl: string | null;
+
+  @Column({
+    name: 'service_radius_km',
+    type: 'decimal',
+    precision: 8,
+    scale: 2,
+    nullable: true,
+    transformer: {
+      to: (value?: number | null) => value ?? null,
+      from: (value: string | null) => (value == null ? null : parseFloat(value)),
+    },
+  })
+  serviceRadiusKm: number | null;
+
+  @Column({
+    type: 'decimal',
+    precision: 10,
+    scale: 7,
+    nullable: true,
+    transformer: {
+      to: (value?: number | null) => value ?? null,
+      from: (value: string | null) => (value == null ? null : parseFloat(value)),
+    },
+  })
+  latitude: number | null;
+
+  @Column({
+    type: 'decimal',
+    precision: 10,
+    scale: 7,
+    nullable: true,
+    transformer: {
+      to: (value?: number | null) => value ?? null,
+      from: (value: string | null) => (value == null ? null : parseFloat(value)),
+    },
+  })
+  longitude: number | null;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

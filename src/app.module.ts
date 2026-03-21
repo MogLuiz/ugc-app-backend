@@ -11,6 +11,7 @@ import { AvailabilityModule } from './availability/availability.module';
 import { JobTypesModule } from './job-types/job-types.module';
 import { BookingsModule } from './bookings/bookings.module';
 import { CreatorJobTypesModule } from './creator-job-types/creator-job-types.module';
+import { ContractRequestsModule } from './contract-requests/contract-requests.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { CreatorJobTypesModule } from './creator-job-types/creator-job-types.mod
     JobTypesModule,
     CreatorJobTypesModule,
     BookingsModule,
+    ContractRequestsModule,
     UploadsModule,
     HealthModule,
   ],
