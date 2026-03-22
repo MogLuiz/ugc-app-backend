@@ -18,7 +18,14 @@ export type MarketplaceCreatorListItem = {
   minPrice: number | null;
 };
 
-export type MarketplaceCreatorDetailItem = MarketplaceCreatorListItem;
+export type MarketplaceCreatorDetailItem = MarketplaceCreatorListItem & {
+  addressCity: string | null;
+  addressState: string | null;
+  creatorLatitude: number | null;
+  creatorLongitude: number | null;
+  creatorHasValidCoordinates: boolean;
+  creatorServiceRadiusKm: number | null;
+};
 
 export type ListMarketplaceCreatorsParams = {
   search?: string;
@@ -112,6 +119,12 @@ export class UsersRepository {
       .addSelect('profile.photo_url', 'coverImageUrl')
       .addSelect('profile.rating', 'rating')
       .addSelect('profile.bio', 'bio')
+      .addSelect('profile.address_city', 'addressCity')
+      .addSelect('profile.address_state', 'addressState')
+      .addSelect('profile.latitude', 'creatorLatitude')
+      .addSelect('profile.longitude', 'creatorLongitude')
+      .addSelect('profile.has_valid_coordinates', 'creatorHasValidCoordinates')
+      .addSelect('creatorProfile.service_radius_km', 'creatorServiceRadiusKm')
       .addSelect(
         `
           CASE
@@ -152,7 +165,8 @@ export class UsersRepository {
         'minPrice',
       )
       .groupBy('user.id')
-      .addGroupBy('profile.user_id');
+      .addGroupBy('profile.user_id')
+      .addGroupBy('creatorProfile.user_id');
 
     if (params.sortBy === 'avaliacao') {
       query.orderBy('profile.rating', 'DESC', 'NULLS LAST');
@@ -229,6 +243,12 @@ export class UsersRepository {
       .addSelect('profile.photo_url', 'coverImageUrl')
       .addSelect('profile.rating', 'rating')
       .addSelect('profile.bio', 'bio')
+      .addSelect('profile.address_city', 'addressCity')
+      .addSelect('profile.address_state', 'addressState')
+      .addSelect('profile.latitude', 'creatorLatitude')
+      .addSelect('profile.longitude', 'creatorLongitude')
+      .addSelect('profile.has_valid_coordinates', 'creatorHasValidCoordinates')
+      .addSelect('creatorProfile.service_radius_km', 'creatorServiceRadiusKm')
       .addSelect(
         `
           CASE
@@ -270,6 +290,7 @@ export class UsersRepository {
       )
       .groupBy('user.id')
       .addGroupBy('profile.user_id')
+      .addGroupBy('creatorProfile.user_id')
       .getRawOne<{
         id: string;
         name: string;
@@ -278,6 +299,12 @@ export class UsersRepository {
         rating: string | number;
         location: string;
         bio: string | null;
+        addressCity: string | null;
+        addressState: string | null;
+        creatorLatitude: string | number | null;
+        creatorLongitude: string | number | null;
+        creatorHasValidCoordinates: boolean | string;
+        creatorServiceRadiusKm: string | number | null;
         niche: string | null;
         tags: string[] | null;
         minPrice: string | number | null;
@@ -296,6 +323,29 @@ export class UsersRepository {
         typeof row.rating === 'number' ? row.rating : parseFloat(row.rating ?? '0'),
       location: row.location,
       bio: row.bio,
+      addressCity: row.addressCity,
+      addressState: row.addressState,
+      creatorLatitude:
+        row.creatorLatitude == null
+          ? null
+          : typeof row.creatorLatitude === 'number'
+            ? row.creatorLatitude
+            : parseFloat(row.creatorLatitude),
+      creatorLongitude:
+        row.creatorLongitude == null
+          ? null
+          : typeof row.creatorLongitude === 'number'
+            ? row.creatorLongitude
+            : parseFloat(row.creatorLongitude),
+      creatorHasValidCoordinates:
+        row.creatorHasValidCoordinates === true ||
+        row.creatorHasValidCoordinates === 'true',
+      creatorServiceRadiusKm:
+        row.creatorServiceRadiusKm == null
+          ? null
+          : typeof row.creatorServiceRadiusKm === 'number'
+            ? row.creatorServiceRadiusKm
+            : parseFloat(row.creatorServiceRadiusKm),
       tags: Array.isArray(row.tags) ? row.tags.filter(Boolean) : [],
       niche: row.niche || 'Serviços UGC',
       minPrice:

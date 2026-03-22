@@ -7,6 +7,7 @@ import {
   PrimaryColumn,
   UpdateDateColumn,
 } from 'typeorm';
+import { GeocodingStatus } from '../../common/enums/geocoding-status.enum';
 import { User } from '../../users/entities/user.entity';
 
 @Entity('profiles')
@@ -52,6 +53,50 @@ export class Profile {
 
   @Column({ name: 'address_zip_code', type: 'varchar', length: 20, nullable: true })
   addressZipCode: string | null;
+
+  @Column({ name: 'formatted_address', type: 'varchar', length: 500, nullable: true })
+  formattedAddress: string | null;
+
+  @Column({ name: 'address_hash', type: 'varchar', length: 64, nullable: true })
+  addressHash: string | null;
+
+  @Column({
+    type: 'decimal',
+    precision: 10,
+    scale: 7,
+    nullable: true,
+    transformer: {
+      to: (value?: number | null) => value ?? null,
+      from: (value: string | null) => (value == null ? null : parseFloat(value)),
+    },
+  })
+  latitude: number | null;
+
+  @Column({
+    type: 'decimal',
+    precision: 10,
+    scale: 7,
+    nullable: true,
+    transformer: {
+      to: (value?: number | null) => value ?? null,
+      from: (value: string | null) => (value == null ? null : parseFloat(value)),
+    },
+  })
+  longitude: number | null;
+
+  @Column({
+    name: 'geocoding_status',
+    type: 'varchar',
+    length: 20,
+    default: GeocodingStatus.PENDING,
+  })
+  geocodingStatus: GeocodingStatus;
+
+  @Column({ name: 'geocoded_at', type: 'timestamptz', nullable: true })
+  geocodedAt: Date | null;
+
+  @Column({ name: 'has_valid_coordinates', type: 'boolean', default: false })
+  hasValidCoordinates: boolean;
 
   @Column({ type: 'text', nullable: true })
   bio: string | null;

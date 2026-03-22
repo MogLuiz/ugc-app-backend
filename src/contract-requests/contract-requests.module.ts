@@ -10,6 +10,7 @@ import { ContractRequestsController } from './contract-requests.controller';
 import { ContractRequestsService } from './contract-requests.service';
 import { DistanceService } from './services/distance.service';
 import { PricingService } from './services/pricing.service';
+import { TransportService } from './services/transport.service';
 
 @Module({
   imports: [
@@ -22,6 +23,6 @@ import { PricingService } from './services/pricing.service';
     SchedulingModule,
   ],
   controllers: [ContractRequestsController],
-  providers: [ContractRequestsService, DistanceService, PricingService],
+  providers: [ContractRequestsService, DistanceService, TransportService, PricingService],
 })
 export class ContractRequestsModule {}

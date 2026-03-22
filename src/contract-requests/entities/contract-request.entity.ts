@@ -79,7 +79,10 @@ export class ContractRequest {
   durationMinutes: number;
 
   @Column({ name: 'location_address', type: 'text' })
-  locationAddress: string;
+  jobAddress: string;
+
+  @Column({ name: 'job_formatted_address', type: 'varchar', length: 500, nullable: true })
+  jobFormattedAddress: string | null;
 
   @Column({
     name: 'location_lat',
@@ -88,7 +91,7 @@ export class ContractRequest {
     scale: 7,
     transformer: decimalTransformer,
   })
-  locationLat: number;
+  jobLatitude: number;
 
   @Column({
     name: 'location_lng',
@@ -97,7 +100,7 @@ export class ContractRequest {
     scale: 7,
     transformer: decimalTransformer,
   })
-  locationLng: number;
+  jobLongitude: number;
 
   @Column({
     name: 'distance_km',
@@ -107,6 +110,16 @@ export class ContractRequest {
     transformer: decimalTransformer,
   })
   distanceKm: number;
+
+  @Column({
+    name: 'effective_service_radius_km_used',
+    type: 'decimal',
+    precision: 8,
+    scale: 2,
+    nullable: true,
+    transformer: decimalTransformer,
+  })
+  effectiveServiceRadiusKmUsed: number | null;
 
   @Column({
     name: 'transport_fee',

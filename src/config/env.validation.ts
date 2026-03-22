@@ -10,6 +10,7 @@ enum NodeEnv {
 enum GeocodingStubMode {
   always_fail = 'always_fail',
   mock_success = 'mock_success',
+  accept_all = 'accept_all',
 }
 
 export class EnvValidation {
@@ -93,11 +94,42 @@ export class EnvValidation {
 
   @IsOptional()
   @IsEnum(GeocodingStubMode)
-  GEOCODING_STUB_MODE: GeocodingStubMode = GeocodingStubMode.always_fail;
+  GEOCODING_STUB_MODE: GeocodingStubMode =
+    process.env.NODE_ENV === 'development'
+      ? GeocodingStubMode.accept_all
+      : GeocodingStubMode.always_fail;
 
   @IsOptional()
   @IsString()
   GEOCODING_STUB_RESPONSES: string = '{}';
+
+  @IsOptional()
+  @IsNumber()
+  GEOCODING_DEFAULT_LAT: number = -19.9167;
+
+  @IsOptional()
+  @IsNumber()
+  GEOCODING_DEFAULT_LNG: number = -43.9345;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(500)
+  GEOCODING_TIMEOUT_MS: number = 3000;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  DEFAULT_CREATOR_SERVICE_RADIUS_KM: number = 30;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0.01)
+  TRANSPORT_PRICE_PER_KM: number = 2;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  MIN_TRANSPORT_PRICE: number = 20;
 }
 
 export function validateEnv(config: Record<string, unknown>): EnvValidation {

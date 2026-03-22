@@ -10,8 +10,9 @@ import { AuthModule } from '../auth/auth.module';
 import { PortfolioModule } from '../portfolio/portfolio.module';
 import { AvailabilityModule } from '../availability/availability.module';
 import { GeocodingModule } from '../geocoding/geocoding.module';
-import { CreatorLocationService } from './services/creator-location.service';
 import { CreatorJobTypesModule } from '../creator-job-types/creator-job-types.module';
+import { ProfileLocationService } from './services/profile-location.service';
+import { DistanceService } from '../contract-requests/services/distance.service';
 
 @Module({
   imports: [
@@ -24,7 +25,7 @@ import { CreatorJobTypesModule } from '../creator-job-types/creator-job-types.mo
     CreatorJobTypesModule,
   ],
   controllers: [ProfilesController],
-  providers: [ProfilesService, CreatorLocationService],
-  exports: [ProfilesService],
+  providers: [ProfilesService, ProfileLocationService, DistanceService],
+  exports: [ProfilesService, ProfileLocationService, DistanceService],
 })
 export class ProfilesModule {}

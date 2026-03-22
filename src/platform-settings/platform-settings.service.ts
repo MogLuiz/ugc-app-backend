@@ -12,8 +12,21 @@ export class PlatformSettingsService {
     private readonly platformSettingsRepository: PlatformSettingsRepository,
   ) {}
 
-  async getCurrentOrThrow(): Promise<PlatformSettingsSnapshot> {
+  async getCurrent(): Promise<PlatformSettingsSnapshot | null> {
     const settings = await this.platformSettingsRepository.findCurrent();
+
+    if (!settings) {
+      return null;
+    }
+
+    return {
+      transportPricePerKm: settings.transportPricePerKm,
+      transportMinimumFee: settings.transportMinimumFee,
+    };
+  }
+
+  async getCurrentOrThrow(): Promise<PlatformSettingsSnapshot> {
+    const settings = await this.getCurrent();
 
     if (!settings) {
       throw new NotFoundException(
@@ -21,9 +34,6 @@ export class PlatformSettingsService {
       );
     }
 
-    return {
-      transportPricePerKm: settings.transportPricePerKm,
-      transportMinimumFee: settings.transportMinimumFee,
-    };
+    return settings;
   }
 }

@@ -2,6 +2,7 @@ import { DataSource } from 'typeorm';
 import { ContractRequestsService } from './contract-requests.service';
 import { DistanceService } from './services/distance.service';
 import { PricingService } from './services/pricing.service';
+import { TransportService } from './services/transport.service';
 import { UserRole } from '../common/enums/user-role.enum';
 import { JobMode } from '../common/enums/job-mode.enum';
 import { PaymentStatus } from '../common/enums/payment-status.enum';
@@ -9,7 +10,7 @@ import { ContractRequestStatus } from '../common/enums/contract-request-status.e
 
 describe('PricingService', () => {
   it('calculates transport fee with minimum floor', () => {
-    const service = new PricingService();
+    const service = new PricingService(new TransportService());
 
     const result = service.buildPricing({
       creatorBasePrice: 200,
@@ -19,8 +20,11 @@ describe('PricingService', () => {
     });
 
     expect(result.transportFee).toBe(20);
+    expect(result.transport.price).toBe(20);
+    expect(result.transport.isMinimumApplied).toBe(true);
     expect(result.platformFee).toBe(0);
     expect(result.totalPrice).toBe(220);
+    expect(result.totalAmount).toBe(220);
     expect(result.currency).toBe('BRL');
   });
 });
@@ -54,11 +58,12 @@ describe('ContractRequestsService', () => {
       profile: {
         name: 'Creator Teste',
         photoUrl: 'https://cdn.test/avatar.png',
+        latitude: -23.55052,
+        longitude: -46.633308,
+        hasValidCoordinates: true,
       },
       creatorProfile: {
         autoAcceptBookings: true,
-        latitude: -23.55052,
-        longitude: -46.633308,
         serviceRadiusKm: 20,
       },
     };
@@ -90,7 +95,7 @@ describe('ContractRequestsService', () => {
       }),
     };
     const platformSettingsService = {
-      getCurrentOrThrow: jest.fn().mockResolvedValue({
+      getCurrent: jest.fn().mockResolvedValue({
         transportPricePerKm: 3.5,
         transportMinimumFee: 15,
       }),
@@ -116,24 +121,32 @@ describe('ContractRequestsService', () => {
     };
     const distanceService = {
       calculateDistanceKm: jest.fn().mockReturnValue(10),
+      buildSummary: jest.fn().mockImplementation((km, effectiveServiceRadiusKm) => ({
+        km,
+        formatted: km == null ? null : `${km.toFixed(1)} km`,
+        isWithinServiceRadius:
+          km == null || effectiveServiceRadiusKm == null
+            ? null
+            : km <= effectiveServiceRadiusKm,
+        effectiveServiceRadiusKm: effectiveServiceRadiusKm ?? null,
+      })),
     };
-    const pricingService = {
-      buildPricing: jest.fn().mockReturnValue({
-        currency: 'BRL',
-        creatorBasePrice: 250,
-        distanceKm: 10,
-        transportFee: 35,
-        platformFee: 0,
-        totalPrice: 285,
-        transportPricePerKmUsed: 3.5,
-        transportMinimumFeeUsed: 15,
-      }),
-    };
+    const pricingService = new PricingService(new TransportService());
     const schedulingConflictService = {
       hasConflicts: jest.fn().mockResolvedValue(false),
     };
+    const configService = {
+      get: jest.fn().mockImplementation((key: string) => {
+        if (key === 'DEFAULT_CREATOR_SERVICE_RADIUS_KM') return 30;
+        if (key === 'GEOCODING_TIMEOUT_MS') return 50;
+        if (key === 'TRANSPORT_PRICE_PER_KM') return 2;
+        if (key === 'MIN_TRANSPORT_PRICE') return 20;
+        return undefined;
+      }),
+    };
 
     const service = new ContractRequestsService(
+      configService as never,
       dataSource,
       usersRepository as never,
       jobTypesService as never,
@@ -162,6 +175,7 @@ describe('ContractRequestsService', () => {
         distanceService,
         pricingService,
         schedulingConflictService,
+        configService,
       },
     };
   }
@@ -177,7 +191,7 @@ describe('ContractRequestsService', () => {
         description: 'Captação presencial',
         startsAt: '2026-03-21T10:00:00.000Z',
         durationMinutes: 120,
-        locationAddress: 'Av. Paulista, 1000',
+        jobAddress: 'Av. Paulista, 1000',
         termsAccepted: true,
       },
     );
@@ -186,6 +200,9 @@ describe('ContractRequestsService', () => {
     expect(result.status).toBe(ContractRequestStatus.ACCEPTED);
     expect(result.paymentStatus).toBe(PaymentStatus.PAID);
     expect(result.totalPrice).toBe(285);
+    expect(result.totalAmount).toBe(285);
+    expect(result.transport.price).toBe(35);
+    expect(result.transportFee).toBe(result.transport.price);
     expect(result.transportPricePerKmUsed).toBe(3.5);
   });
 
@@ -201,7 +218,7 @@ describe('ContractRequestsService', () => {
         description: 'Captação presencial',
         startsAt: '2026-03-21T10:00:00.000Z',
         durationMinutes: 120,
-        locationAddress: 'Av. Paulista, 1000',
+        jobAddress: 'Av. Paulista, 1000',
         termsAccepted: true,
       },
     );
@@ -211,7 +228,8 @@ describe('ContractRequestsService', () => {
 
   it('blocks preview when creator has no valid coordinates', async () => {
     const { service, mocks } = createService();
-    mocks.creatorUser.creatorProfile.latitude = null;
+    mocks.creatorUser.profile.latitude = null;
+    mocks.creatorUser.profile.hasValidCoordinates = false;
 
     await expect(
       service.preview(
@@ -222,12 +240,12 @@ describe('ContractRequestsService', () => {
           description: 'Captação presencial',
           startsAt: '2026-03-21T10:00:00.000Z',
           durationMinutes: 120,
-          locationAddress: 'Av. Paulista, 1000',
+          jobAddress: 'Av. Paulista, 1000',
           termsAccepted: true,
         },
       ),
     ).rejects.toThrow(
-      'Este creator ainda não possui coordenadas ou raio de atendimento configurados para contratação presencial',
+      'Este creator precisa atualizar o endereco para habilitar contratacoes presenciais.',
     );
   });
 
@@ -295,10 +313,12 @@ describe('ContractRequestsService', () => {
       description: 'Captação presencial',
       currency: 'BRL',
       termsAcceptedAt: new Date('2026-03-20T10:00:00.000Z'),
-      locationAddress: 'Av. Paulista, 1000',
-      locationLat: -23.561684,
-      locationLng: -46.625378,
+      jobAddress: 'Av. Paulista, 1000',
+      jobFormattedAddress: 'Av. Paulista, 1000, Sao Paulo, SP',
+      jobLatitude: -23.561684,
+      jobLongitude: -46.625378,
       distanceKm: 10,
+      effectiveServiceRadiusKmUsed: 20,
       transportFee: 35,
       creatorBasePrice: 250,
       platformFee: 0,
@@ -336,12 +356,135 @@ describe('ContractRequestsService', () => {
           description: 'Captação presencial',
           startsAt: '2026-03-21T10:00:00.000Z',
           durationMinutes: 120,
-          locationAddress: 'Endereco invalido',
+          jobAddress: 'Endereco invalido',
           termsAccepted: true,
         },
       ),
     ).rejects.toThrow(
-      'Não foi possível geocodificar o endereço informado para a contratação',
+      'Nao foi possivel validar o local do trabalho. Revise o endereco.',
     );
+  });
+
+  it('applies minimum transport fee when distance is short', async () => {
+    const { service, mocks } = createService();
+    mocks.distanceService.calculateDistanceKm.mockReturnValue(1);
+    mocks.platformSettingsService.getCurrent.mockResolvedValue({
+      transportPricePerKm: 2,
+      transportMinimumFee: 20,
+    });
+
+    const result = await service.preview(
+      { authUserId: 'auth-company' },
+      {
+        creatorId: 'creator-1',
+        jobTypeId: 'job-type-1',
+        description: 'Captação presencial',
+        startsAt: '2026-03-21T10:00:00.000Z',
+        durationMinutes: 120,
+        jobAddress: 'Av. Paulista, 1000',
+        termsAccepted: true,
+      },
+    );
+
+    expect(result.transport.price).toBe(20);
+    expect(result.transport.isMinimumApplied).toBe(true);
+    expect(result.transportFee).toBe(20);
+    expect(result.totalAmount).toBe(270);
+  });
+
+  it('recalculates distance and transport when jobAddress changes', async () => {
+    const { service, mocks } = createService();
+    mocks.geocodingService.geocodeAddress.mockImplementation(async (address: string) => {
+      if (address.includes('Paulista')) {
+        return { lat: -23.56, lng: -46.62, normalizedAddress: 'Paulista' };
+      }
+      return { lat: -23.60, lng: -46.50, normalizedAddress: 'Savassi' };
+    });
+    mocks.distanceService.calculateDistanceKm.mockImplementation((_, destination) =>
+      destination.lng === -46.62 ? 2 : 12,
+    );
+    mocks.platformSettingsService.getCurrent.mockResolvedValue({
+      transportPricePerKm: 2,
+      transportMinimumFee: 20,
+    });
+
+    const first = await service.preview(
+      { authUserId: 'auth-company' },
+      {
+        creatorId: 'creator-1',
+        jobTypeId: 'job-type-1',
+        description: 'Captação presencial',
+        startsAt: '2026-03-21T10:00:00.000Z',
+        durationMinutes: 120,
+        jobAddress: 'Av. Paulista, 1000',
+        termsAccepted: true,
+      },
+    );
+
+    const second = await service.preview(
+      { authUserId: 'auth-company' },
+      {
+        creatorId: 'creator-1',
+        jobTypeId: 'job-type-1',
+        description: 'Captação presencial',
+        startsAt: '2026-03-21T10:00:00.000Z',
+        durationMinutes: 120,
+        jobAddress: 'Rua dos Inconfidentes, 50',
+        termsAccepted: true,
+      },
+    );
+
+    expect(first.transport.price).toBe(20);
+    expect(second.transport.price).toBe(24);
+    expect(first.totalAmount).toBe(270);
+    expect(second.totalAmount).toBe(274);
+  });
+
+  it('returns controlled error on geocoding timeout', async () => {
+    const { service, mocks } = createService();
+    mocks.geocodingService.geocodeAddress.mockImplementation(
+      () => new Promise(() => undefined),
+    );
+    mocks.configService.get.mockImplementation((key: string) => {
+      if (key === 'DEFAULT_CREATOR_SERVICE_RADIUS_KM') return 30;
+      if (key === 'GEOCODING_TIMEOUT_MS') return 1;
+      if (key === 'TRANSPORT_PRICE_PER_KM') return 2;
+      if (key === 'MIN_TRANSPORT_PRICE') return 20;
+      return undefined;
+    });
+
+    await expect(
+      service.preview(
+        { authUserId: 'auth-company' },
+        {
+          creatorId: 'creator-1',
+          jobTypeId: 'job-type-1',
+          description: 'Captação presencial',
+          startsAt: '2026-03-21T10:00:00.000Z',
+          durationMinutes: 120,
+          jobAddress: 'Rua qualquer, 10',
+          termsAccepted: true,
+        },
+      ),
+    ).rejects.toThrow('Nao foi possivel validar o local do trabalho. Revise o endereco.');
+  });
+
+  it('reuses geocoding between preview and create for same payload', async () => {
+    const { service, mocks } = createService();
+
+    const payload = {
+      creatorId: 'creator-1',
+      jobTypeId: 'job-type-1',
+      description: 'Captação presencial',
+      startsAt: '2026-03-21T10:00:00.000Z',
+      durationMinutes: 120,
+      jobAddress: 'Av. Paulista, 1000',
+      termsAccepted: true,
+    };
+
+    await service.preview({ authUserId: 'auth-company' }, payload);
+    await service.create({ authUserId: 'auth-company' }, payload);
+
+    expect(mocks.geocodingService.geocodeAddress).toHaveBeenCalledTimes(1);
   });
 });

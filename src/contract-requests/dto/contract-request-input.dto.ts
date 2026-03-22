@@ -30,7 +30,7 @@ export class ContractRequestInputDto {
   @IsString()
   @IsNotEmpty()
   @MaxLength(500)
-  locationAddress: string;
+  jobAddress: string;
 
   @IsBoolean()
   termsAccepted: boolean;

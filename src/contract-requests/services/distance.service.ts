@@ -5,6 +5,13 @@ type Coordinates = {
   lng: number;
 };
 
+export type DistanceSummary = {
+  km: number | null;
+  formatted: string | null;
+  isWithinServiceRadius: boolean | null;
+  effectiveServiceRadiusKm: number | null;
+};
+
 @Injectable()
 export class DistanceService {
   calculateDistanceKm(origin: Coordinates, destination: Coordinates): number {
@@ -21,6 +28,23 @@ export class DistanceService {
 
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return this.roundToTwoDecimals(earthRadiusKm * c);
+  }
+
+  formatDistanceKm(distanceKm: number | null): string | null {
+    if (distanceKm == null) return null;
+    return `${distanceKm.toFixed(1)} km`;
+  }
+
+  buildSummary(distanceKm: number | null, effectiveServiceRadiusKm?: number | null): DistanceSummary {
+    return {
+      km: distanceKm,
+      formatted: this.formatDistanceKm(distanceKm),
+      isWithinServiceRadius:
+        distanceKm == null || effectiveServiceRadiusKm == null
+          ? null
+          : distanceKm <= effectiveServiceRadiusKm,
+      effectiveServiceRadiusKm: effectiveServiceRadiusKm ?? null,
+    };
   }
 
   private toRadians(value: number): number {

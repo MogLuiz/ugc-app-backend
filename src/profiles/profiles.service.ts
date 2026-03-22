@@ -1,5 +1,6 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { ConfigService } from '@nestjs/config';
 import { Repository } from 'typeorm';
 import type { AuthUser } from '../common/interfaces/auth-user.interface';
 import { User } from '../users/entities/user.entity';
@@ -18,9 +19,10 @@ import {
   ListMarketplaceCreatorsDto,
   type MarketplaceSortBy,
 } from './dto/list-marketplace-creators.dto';
-import { CreatorLocationService } from './services/creator-location.service';
 import { CreatorJobTypesRepository } from '../creator-job-types/creator-job-types.repository';
 import { JobMode } from '../common/enums/job-mode.enum';
+import { ProfileLocationService } from './services/profile-location.service';
+import { DistanceService } from '../contract-requests/services/distance.service';
 
 const DEFAULT_MARKETPLACE_PAGE = 1;
 const DEFAULT_MARKETPLACE_LIMIT = 8;
@@ -31,6 +33,7 @@ const DEFAULT_WORKING_END = '18:00:00';
 @Injectable()
 export class ProfilesService {
   constructor(
+    private readonly configService: ConfigService,
     private usersRepository: UsersRepository,
     @InjectRepository(Profile)
     private profileRepo: Repository<Profile>,
@@ -40,16 +43,17 @@ export class ProfilesService {
     private companyProfileRepo: Repository<CompanyProfile>,
     private portfolioService: PortfolioService,
     private availabilityRepository: AvailabilityRepository,
-    private creatorLocationService: CreatorLocationService,
+    private profileLocationService: ProfileLocationService,
     private creatorJobTypesRepository: CreatorJobTypesRepository,
+    private distanceService: DistanceService,
   ) {}
 
-  async getMe(authUserId: string) {
+  async getMe(authUserId: string, warnings?: string[]) {
     const user = await this.usersRepository.findByAuthUserIdWithProfiles(authUserId);
     if (!user) {
       throw new NotFoundException('Usuário não encontrado. Complete o cadastro em POST /users/bootstrap');
     }
-    return this.buildPayload(user);
+    return this.buildPayload(user, warnings);
   }
 
   async updateProfile(authUserId: string, dto: UpdateProfileDto) {
@@ -58,19 +62,35 @@ export class ProfilesService {
     if (!profile) throw new NotFoundException('Perfil não encontrado');
 
     const { phone, ...profileDto } = dto;
+    const addressChanged = this.profileLocationService.hasAddressChange(profile, profileDto);
     Object.assign(profile, profileDto);
     if (dto.birthDate) profile.birthDate = new Date(dto.birthDate);
+    if (addressChanged) {
+      this.profileLocationService.prepareAddressForGeocoding(profile);
+    } else if (
+      !profile.hasValidCoordinates &&
+      this.profileLocationService.canResolveAndGeocode(profile)
+    ) {
+      this.profileLocationService.ensureAddressHashForGeocoding(profile);
+    }
     await this.profileRepo.save(profile);
 
     if (phone !== undefined) {
       await this.usersRepository.updatePhone(user.id, phone || null);
     }
 
-    if (user.role === UserRole.CREATOR) {
-      await this.creatorLocationService.syncCoordinatesFromProfile(user.id, profile);
+    // Geocodifica quando: endereço mudou OU usuário legado com endereço mas sem coordenadas
+    const shouldGeocode =
+      addressChanged ||
+      (!profile.hasValidCoordinates &&
+        this.profileLocationService.canResolveAndGeocode(profile));
+
+    let warning: string | null = null;
+    if (shouldGeocode) {
+      warning = await this.profileLocationService.syncProfileCoordinates(user.id);
     }
 
-    return this.getMe(authUserId);
+    return this.getMe(authUserId, warning ? [warning] : undefined);
   }
 
   async updateCreatorProfile(authUserId: string, dto: UpdateCreatorProfileDto) {
@@ -181,9 +201,40 @@ export class ProfilesService {
     );
 
     const workingHours = this.getWorkingHours(activeRules);
+    const effectiveServiceRadiusKm =
+      creator.creatorServiceRadiusKm ??
+      (this.configService.get<number>('DEFAULT_CREATOR_SERVICE_RADIUS_KM') ?? 30);
+    const distanceKm =
+      user.profile?.hasValidCoordinates &&
+      creator.creatorHasValidCoordinates &&
+      user.profile.latitude != null &&
+      user.profile.longitude != null &&
+      creator.creatorLatitude != null &&
+      creator.creatorLongitude != null
+        ? this.distanceService.calculateDistanceKm(
+            {
+              lat: user.profile.latitude,
+              lng: user.profile.longitude,
+            },
+            {
+              lat: creator.creatorLatitude,
+              lng: creator.creatorLongitude,
+            },
+          )
+        : null;
 
     return {
-      ...creator,
+      id: creator.id,
+      name: creator.name,
+      avatarUrl: creator.avatarUrl,
+      coverImageUrl: creator.coverImageUrl,
+      rating: creator.rating,
+      location: creator.location,
+      bio: creator.bio,
+      tags: creator.tags,
+      niche: creator.niche,
+      minPrice: creator.minPrice,
+      distance: this.distanceService.buildSummary(distanceKm, effectiveServiceRadiusKm),
       services: creatorJobTypes
         .filter((item) => item.jobType.mode === JobMode.PRESENTIAL)
         .map((item) => {
@@ -234,7 +285,7 @@ export class ProfilesService {
     return user;
   }
 
-  private async buildPayload(user: User) {
+  private async buildPayload(user: User, warnings?: string[]) {
     const portfolio = await this.portfolioService.buildPortfolioPayload(user.id);
 
     return {
@@ -259,6 +310,13 @@ export class ProfilesService {
             addressCity: user.profile.addressCity,
             addressState: user.profile.addressState,
             addressZipCode: user.profile.addressZipCode,
+            formattedAddress: user.profile.formattedAddress,
+            addressHash: user.profile.addressHash,
+            latitude: user.profile.latitude,
+            longitude: user.profile.longitude,
+            geocodingStatus: user.profile.geocodingStatus,
+            geocodedAt: user.profile.geocodedAt,
+            hasValidCoordinates: user.profile.hasValidCoordinates,
             bio: user.profile.bio,
             onboardingStep: user.profile.onboardingStep,
             createdAt: user.profile.createdAt,
@@ -275,8 +333,6 @@ export class ProfilesService {
             referralSource: user.creatorProfile.referralSource,
             portfolioUrl: user.creatorProfile.portfolioUrl,
             serviceRadiusKm: user.creatorProfile.serviceRadiusKm,
-            latitude: user.creatorProfile.latitude,
-            longitude: user.creatorProfile.longitude,
             createdAt: user.creatorProfile.createdAt,
             updatedAt: user.creatorProfile.updatedAt,
           }
@@ -297,6 +353,7 @@ export class ProfilesService {
           }
         : null,
       portfolio,
+      warnings: warnings?.filter(Boolean) ?? [],
     };
   }
 

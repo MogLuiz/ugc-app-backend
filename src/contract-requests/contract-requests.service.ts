@@ -5,6 +5,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { DataSource, EntityManager, Repository } from 'typeorm';
 import { AuthUser } from '../common/interfaces/auth-user.interface';
 import { User } from '../users/entities/user.entity';
@@ -33,21 +34,33 @@ type PreparedContractRequest = {
   creatorUser: User;
   startsAt: Date;
   endsAt: Date;
-  locationAddress: string;
-  locationLat: number;
-  locationLng: number;
+  jobAddress: string;
+  jobFormattedAddress: string | null;
+  jobLatitude: number;
+  jobLongitude: number;
   distanceKm: number;
+  effectiveServiceRadiusKm: number;
   durationMinutes: number;
   description: string;
   creatorBasePrice: number;
   pricing: ReturnType<PricingService['buildPricing']>;
 };
 
+type GeocodingCacheEntry = {
+  lat: number;
+  lng: number;
+  normalizedAddress: string | null;
+  createdAt: number;
+};
+
 @Injectable()
 export class ContractRequestsService {
   private readonly logger = new Logger(ContractRequestsService.name);
+  private readonly geocodingPreviewCache = new Map<string, GeocodingCacheEntry>();
+  private readonly geocodingPreviewCacheTtlMs = 2 * 60 * 1000;
 
   constructor(
+    private readonly configService: ConfigService,
     private readonly dataSource: DataSource,
     private readonly usersRepository: UsersRepository,
     private readonly jobTypesService: JobTypesService,
@@ -67,12 +80,17 @@ export class ContractRequestsService {
       mode: JobMode.PRESENTIAL,
       startsAt: prepared.startsAt.toISOString(),
       durationMinutes: prepared.durationMinutes,
-      locationAddress: prepared.locationAddress,
-      locationLat: prepared.locationLat,
-      locationLng: prepared.locationLng,
+      jobAddress: prepared.jobAddress,
+      jobFormattedAddress: prepared.jobFormattedAddress,
+      jobLatitude: prepared.jobLatitude,
+      jobLongitude: prepared.jobLongitude,
       creatorId: prepared.creatorUser.id,
       creatorNameSnapshot: prepared.creatorUser.profile?.name ?? 'Creator',
       creatorAvatarUrlSnapshot: prepared.creatorUser.profile?.photoUrl ?? null,
+      creatorDistance: this.distanceService.buildSummary(
+        prepared.distanceKm,
+        prepared.effectiveServiceRadiusKm,
+      ),
       ...prepared.pricing,
     };
   }
@@ -97,10 +115,12 @@ export class ContractRequestsService {
           termsAcceptedAt: new Date(),
           startsAt: prepared.startsAt,
           durationMinutes: prepared.durationMinutes,
-          locationAddress: prepared.locationAddress,
-          locationLat: prepared.locationLat,
-          locationLng: prepared.locationLng,
+          jobAddress: prepared.jobAddress,
+          jobFormattedAddress: prepared.jobFormattedAddress,
+          jobLatitude: prepared.jobLatitude,
+          jobLongitude: prepared.jobLongitude,
           distanceKm: prepared.distanceKm,
+          effectiveServiceRadiusKmUsed: prepared.effectiveServiceRadiusKm,
           transportFee: prepared.pricing.transportFee,
           creatorBasePrice: prepared.pricing.creatorBasePrice,
           platformFee: prepared.pricing.platformFee,
@@ -248,27 +268,40 @@ export class ContractRequestsService {
         ? creatorJobType.basePriceCents / 100
         : jobType.price;
 
-    const geocoded = await this.geocodingService.geocodeAddress(dto.locationAddress);
+    const geocoded = await this.resolveJobAddressGeocoding(companyUser.id, dto);
     if (!geocoded) {
-      this.logger.warn(`Geocoding failed for job address: ${dto.locationAddress}`);
+      this.logger.warn(`Geocoding failed for job address: ${dto.jobAddress}`);
+      throw new BadRequestException({
+        code: 'INVALID_JOB_LOCATION',
+        message: 'Nao foi possivel validar o local do trabalho. Revise o endereco.',
+      });
+    }
+
+    let creatorProfile = creatorUser.creatorProfile;
+    if (!creatorProfile) {
       throw new BadRequestException(
-        'Não foi possível geocodificar o endereço informado para a contratação',
+        'Este creator ainda não possui perfil configurado para contratação presencial',
       );
     }
 
-    const creatorProfile = creatorUser.creatorProfile;
+    const creatorProfileData = creatorUser.profile;
     if (
-      !creatorProfile ||
-      creatorProfile.latitude == null ||
-      creatorProfile.longitude == null ||
-      creatorProfile.serviceRadiusKm == null
+      !creatorProfileData?.hasValidCoordinates ||
+      creatorProfileData.latitude == null ||
+      creatorProfileData.longitude == null
     ) {
-      throw new BadRequestException(
-        'Este creator ainda não possui coordenadas ou raio de atendimento configurados para contratação presencial',
-      );
+      throw new BadRequestException({
+        code: 'INVALID_CREATOR_LOCATION',
+        message:
+          'Este creator precisa atualizar o endereco para habilitar contratacoes presenciais.',
+      });
     }
 
-    if (creatorProfile.serviceRadiusKm <= 0) {
+    const serviceRadiusKm =
+      creatorProfile.serviceRadiusKm ??
+      (this.configService.get<number>('DEFAULT_CREATOR_SERVICE_RADIUS_KM') ?? 30);
+
+    if (serviceRadiusKm <= 0) {
       throw new BadRequestException(
         'Este creator ainda não possui raio de atendimento válido para contratação presencial',
       );
@@ -276,8 +309,8 @@ export class ContractRequestsService {
 
     const distanceKm = this.distanceService.calculateDistanceKm(
       {
-        lat: creatorProfile.latitude,
-        lng: creatorProfile.longitude,
+        lat: creatorProfileData.latitude,
+        lng: creatorProfileData.longitude,
       },
       {
         lat: geocoded.lat,
@@ -285,9 +318,9 @@ export class ContractRequestsService {
       },
     );
 
-    if (distanceKm > creatorProfile.serviceRadiusKm) {
+    if (distanceKm > serviceRadiusKm) {
       this.logger.warn(
-        `Location out of service radius for creator ${creatorUser.id}. distanceKm=${distanceKm}, serviceRadiusKm=${creatorProfile.serviceRadiusKm}`,
+        `Location out of service radius for creator ${creatorUser.id}. distanceKm=${distanceKm}, serviceRadiusKm=${serviceRadiusKm}`,
       );
       throw new BadRequestException(
         'O local informado está fora do raio de atendimento do creator',
@@ -312,12 +345,19 @@ export class ContractRequestsService {
       );
     }
 
-    const settings = await this.platformSettingsService.getCurrentOrThrow();
+    const settings = await this.platformSettingsService.getCurrent();
+    const transportPricePerKm =
+      settings?.transportPricePerKm ??
+      (this.configService.get<number>('TRANSPORT_PRICE_PER_KM') ?? 2);
+    const transportMinimumFee =
+      settings?.transportMinimumFee ??
+      (this.configService.get<number>('MIN_TRANSPORT_PRICE') ?? 20);
+
     const pricing = this.pricingService.buildPricing({
       creatorBasePrice: creatorBasePriceReais,
       distanceKm,
-      transportPricePerKm: settings.transportPricePerKm,
-      transportMinimumFee: settings.transportMinimumFee,
+      transportPricePerKm,
+      transportMinimumFee,
     });
 
     return {
@@ -325,10 +365,12 @@ export class ContractRequestsService {
       creatorUser,
       startsAt,
       endsAt,
-      locationAddress: geocoded.normalizedAddress ?? dto.locationAddress.trim(),
-      locationLat: geocoded.lat,
-      locationLng: geocoded.lng,
+      jobAddress: dto.jobAddress.trim(),
+      jobFormattedAddress: geocoded.normalizedAddress ?? dto.jobAddress.trim(),
+      jobLatitude: geocoded.lat,
+      jobLongitude: geocoded.lng,
       distanceKm,
+      effectiveServiceRadiusKm: serviceRadiusKm,
       durationMinutes: jobType.durationMinutes,
       description: dto.description.trim(),
       creatorBasePrice: creatorBasePriceReais,
@@ -421,14 +463,25 @@ export class ContractRequestsService {
       termsAcceptedAt: contractRequest.termsAcceptedAt.toISOString(),
       startsAt: contractRequest.startsAt.toISOString(),
       durationMinutes: contractRequest.durationMinutes,
-      locationAddress: contractRequest.locationAddress,
-      locationLat: contractRequest.locationLat,
-      locationLng: contractRequest.locationLng,
-      distanceKm: contractRequest.distanceKm,
+      jobAddress: contractRequest.jobAddress,
+      jobFormattedAddress: contractRequest.jobFormattedAddress,
+      jobLatitude: contractRequest.jobLatitude,
+      jobLongitude: contractRequest.jobLongitude,
+      creatorDistance: this.distanceService.buildSummary(
+        contractRequest.distanceKm,
+        contractRequest.effectiveServiceRadiusKmUsed,
+      ),
+      transport: {
+        price: contractRequest.transportFee,
+        formatted: this.formatCurrency(contractRequest.transportFee, contractRequest.currency),
+        isMinimumApplied:
+          contractRequest.transportFee === contractRequest.transportMinimumFeeUsed,
+      },
       transportFee: contractRequest.transportFee,
       creatorBasePrice: contractRequest.creatorBasePrice,
       platformFee: contractRequest.platformFee,
       totalPrice: contractRequest.totalPrice,
+      totalAmount: contractRequest.totalPrice,
       transportPricePerKmUsed: contractRequest.transportPricePerKmUsed,
       transportMinimumFeeUsed: contractRequest.transportMinimumFeeUsed,
       creatorNameSnapshot: contractRequest.creatorNameSnapshot,
@@ -445,5 +498,69 @@ export class ContractRequestsService {
 
   private userRepository(manager?: EntityManager): Repository<User> {
     return manager ? manager.getRepository(User) : this.dataSource.getRepository(User);
+  }
+
+  private async resolveJobAddressGeocoding(
+    companyUserId: string,
+    dto: PreviewContractRequestDto | CreateContractRequestDto,
+  ) {
+    const cacheKey = this.buildGeocodeCacheKey(companyUserId, dto);
+    const now = Date.now();
+    const cached = this.geocodingPreviewCache.get(cacheKey);
+
+    if (cached && now - cached.createdAt <= this.geocodingPreviewCacheTtlMs) {
+      return {
+        lat: cached.lat,
+        lng: cached.lng,
+        normalizedAddress: cached.normalizedAddress,
+      };
+    }
+
+    const geocoded = await this.geocodeWithTimeout(dto.jobAddress);
+    if (!geocoded) {
+      return null;
+    }
+
+    this.geocodingPreviewCache.set(cacheKey, {
+      lat: geocoded.lat,
+      lng: geocoded.lng,
+      normalizedAddress: geocoded.normalizedAddress ?? null,
+      createdAt: now,
+    });
+
+    return geocoded;
+  }
+
+  private async geocodeWithTimeout(address: string) {
+    const timeoutMs = this.configService.get<number>('GEOCODING_TIMEOUT_MS') ?? 3000;
+    return Promise.race([
+      this.geocodingService.geocodeAddress(address),
+      new Promise<null>((resolve) => {
+        setTimeout(() => resolve(null), timeoutMs);
+      }),
+    ]);
+  }
+
+  private buildGeocodeCacheKey(
+    companyUserId: string,
+    dto: PreviewContractRequestDto | CreateContractRequestDto,
+  ): string {
+    return [
+      companyUserId,
+      dto.creatorId,
+      dto.jobTypeId,
+      dto.startsAt,
+      dto.durationMinutes,
+      dto.jobAddress.trim().toLowerCase(),
+    ].join('|');
+  }
+
+  private formatCurrency(value: number, currency = 'BRL'): string {
+    return new Intl.NumberFormat('pt-BR', {
+      style: 'currency',
+      currency,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(value);
   }
 }

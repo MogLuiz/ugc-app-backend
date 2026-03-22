@@ -5,9 +5,12 @@ import {
   GeocodingService,
 } from './geocoding.service';
 
-type StubMode = 'always_fail' | 'mock_success';
+type StubMode = 'always_fail' | 'mock_success' | 'accept_all';
 
 type StubResponseMap = Record<string, { lat: number; lng: number }>;
+
+const DEFAULT_BH_LAT = -19.9167;
+const DEFAULT_BH_LNG = -43.9345;
 
 @Injectable()
 export class GeocodingStubService extends GeocodingService {
@@ -20,13 +23,18 @@ export class GeocodingStubService extends GeocodingService {
   async geocodeAddress(address: string): Promise<GeocodingResult | null> {
     const mode = this.getMode();
     const normalizedAddress = this.normalizeAddress(address);
+    const responses = this.getResponses();
 
     if (mode === 'always_fail') {
       this.logger.warn(`Geocoding stub configured to fail for address: ${normalizedAddress}`);
       return null;
     }
 
-    const responses = this.getResponses();
+    if (mode === 'accept_all') {
+      const { lat, lng } = this.getDefaultCoordinates();
+      return { lat, lng, normalizedAddress: address.trim() };
+    }
+
     const match = responses[normalizedAddress];
 
     if (!match) {
@@ -42,8 +50,19 @@ export class GeocodingStubService extends GeocodingService {
   }
 
   private getMode(): StubMode {
-    const value = this.configService.get<string>('GEOCODING_STUB_MODE') ?? 'always_fail';
-    return value === 'mock_success' ? 'mock_success' : 'always_fail';
+    const value = this.configService.get<string>('GEOCODING_STUB_MODE');
+    if (value === 'mock_success') return 'mock_success';
+    if (value === 'accept_all') return 'accept_all';
+    if (value === 'always_fail') return 'always_fail';
+    const nodeEnv = this.configService.get<string>('NODE_ENV');
+    return nodeEnv === 'development' ? 'accept_all' : 'always_fail';
+  }
+
+  private getDefaultCoordinates(): { lat: number; lng: number } {
+    const lat = this.configService.get<number>('GEOCODING_DEFAULT_LAT');
+    const lng = this.configService.get<number>('GEOCODING_DEFAULT_LNG');
+    if (lat != null && lng != null) return { lat, lng };
+    return { lat: DEFAULT_BH_LAT, lng: DEFAULT_BH_LNG };
   }
 
   private getResponses(): StubResponseMap {
