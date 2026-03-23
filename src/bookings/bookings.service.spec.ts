@@ -3,6 +3,7 @@ import { BookingStatus } from '../common/enums/booking-status.enum';
 import { BookingOrigin } from '../common/enums/booking-origin.enum';
 import { JobMode } from '../common/enums/job-mode.enum';
 import { UserRole } from '../common/enums/user-role.enum';
+import { ContractRequestStatus } from '../common/enums/contract-request-status.enum';
 import { BookingsService } from './bookings.service';
 
 describe('BookingsService', () => {
@@ -38,6 +39,19 @@ describe('BookingsService', () => {
 
   const dataSource = {
     transaction: jest.fn(),
+    getRepository: jest.fn(),
+  };
+
+  const contractRequestsQueryBuilder = {
+    leftJoinAndSelect: jest.fn().mockReturnThis(),
+    where: jest.fn().mockReturnThis(),
+    andWhere: jest.fn().mockReturnThis(),
+    orderBy: jest.fn().mockReturnThis(),
+    getMany: jest.fn(),
+  };
+
+  const contractRequestsRepository = {
+    createQueryBuilder: jest.fn().mockReturnValue(contractRequestsQueryBuilder),
   };
 
   const service = new BookingsService(
@@ -71,6 +85,7 @@ describe('BookingsService', () => {
 
     manager.getRepository.mockReturnValue(userRepo);
     dataSource.transaction.mockImplementation(async (callback) => callback(manager));
+    dataSource.getRepository.mockReturnValue(contractRequestsRepository);
 
     userRepo.findOne.mockResolvedValue(companyUser);
     userRepo.createQueryBuilder.mockReturnValue(createBookingBuilder);
@@ -133,6 +148,7 @@ describe('BookingsService', () => {
         creatorUserId: creatorUser.id,
       },
     ]);
+    contractRequestsQueryBuilder.getMany.mockResolvedValue([]);
   });
 
   it('cria um booking válido em transação', async () => {
@@ -268,5 +284,53 @@ describe('BookingsService', () => {
       origin: BookingOrigin.COMPANY_REQUEST,
       isBlocking: true,
     });
+  });
+
+  it('inclui ofertas aceitas (contract requests) na agenda do creator', async () => {
+    contractRequestsQueryBuilder.getMany.mockResolvedValue([
+      {
+        id: 'cr-1',
+        companyUserId: companyUser.id,
+        creatorUserId: creatorUser.id,
+        jobTypeId: 'job-type-1',
+        mode: JobMode.PRESENTIAL,
+        description: 'Campanha em loja',
+        status: ContractRequestStatus.ACCEPTED,
+        startsAt: new Date('2099-03-18T15:00:00.000Z'),
+        durationMinutes: 120,
+        jobType: { id: 'job-type-1', name: 'Presenca em evento' },
+        companyUser: {
+          companyProfile: { companyName: 'Acme Corp' },
+          profile: { name: 'Acme' },
+        },
+      },
+    ]);
+
+    const result = await service.getCreatorCalendar(
+      { authUserId: creatorUser.authUserId },
+      {
+        start: '2099-03-17T00:00:00.000Z',
+        end: '2099-03-24T00:00:00.000Z',
+      },
+    );
+
+    expect(result.bookings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'contract-request-cr-1',
+          title: 'Oferta aceita - Acme Corp',
+          status: BookingStatus.CONFIRMED,
+          origin: 'CONTRACT_REQUEST',
+          startDateTime: '2099-03-18T15:00:00.000Z',
+          endDateTime: '2099-03-18T17:00:00.000Z',
+          durationMinutes: 120,
+          jobType: {
+            id: 'job-type-1',
+            name: 'Presenca em evento',
+          },
+          isBlocking: true,
+        }),
+      ]),
+    );
   });
 });

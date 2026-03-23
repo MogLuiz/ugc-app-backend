@@ -20,6 +20,8 @@ import { Booking } from './entities/booking.entity';
 import { GetCreatorCalendarDto } from './dto/get-creator-calendar.dto';
 import { UsersRepository } from '../users/users.repository';
 import { UserRole } from '../common/enums/user-role.enum';
+import { ContractRequest } from '../contract-requests/entities/contract-request.entity';
+import { ContractRequestStatus } from '../common/enums/contract-request-status.enum';
 
 const BLOCKING_BOOKING_STATUSES = [
   BookingStatus.PENDING,
@@ -125,6 +127,21 @@ export class BookingsService {
       startDateTime,
       endDateTime,
     );
+    const acceptedContractRequests = await this.findAcceptedContractRequestsForCalendar(
+      creator.id,
+      startDateTime,
+      endDateTime,
+    );
+    const calendarItems = [
+      ...bookings.map((booking) => this.buildCalendarItemPayload(booking)),
+      ...acceptedContractRequests.map((contractRequest) =>
+        this.buildAcceptedContractRequestCalendarItemPayload(contractRequest),
+      ),
+    ].sort(
+      (left, right) =>
+        new Date(left.startDateTime).getTime() -
+        new Date(right.startDateTime).getTime(),
+    );
 
     return {
       creatorUserId: creator.id,
@@ -134,7 +151,7 @@ export class BookingsService {
         end: endDateTime.toISOString(),
       },
       blockedStatuses: BLOCKING_BOOKING_STATUSES,
-      bookings: bookings.map((booking) => this.buildCalendarItemPayload(booking)),
+      bookings: calendarItems,
     };
   }
 
@@ -266,5 +283,62 @@ export class BookingsService {
       creatorUserId: booking.creatorUserId,
       isBlocking: BLOCKING_BOOKING_STATUSES.includes(booking.status),
     };
+  }
+
+  private buildAcceptedContractRequestCalendarItemPayload(
+    contractRequest: ContractRequest,
+  ) {
+    const endDateTime = new Date(
+      contractRequest.startsAt.getTime() + contractRequest.durationMinutes * 60 * 1000,
+    );
+    const companyName =
+      contractRequest.companyUser?.companyProfile?.companyName ??
+      contractRequest.companyUser?.profile?.name;
+
+    return {
+      id: `contract-request-${contractRequest.id}`,
+      title: companyName ? `Oferta aceita - ${companyName}` : 'Oferta aceita',
+      description: contractRequest.description,
+      status: BookingStatus.CONFIRMED,
+      mode: contractRequest.mode,
+      startDateTime: contractRequest.startsAt.toISOString(),
+      endDateTime: endDateTime.toISOString(),
+      jobTypeName: contractRequest.jobType?.name ?? 'Job',
+      durationMinutes: contractRequest.durationMinutes,
+      origin: 'CONTRACT_REQUEST',
+      notes: null,
+      jobType: {
+        id: contractRequest.jobTypeId,
+        name: contractRequest.jobType?.name ?? 'Job',
+      },
+      companyUserId: contractRequest.companyUserId,
+      creatorUserId: contractRequest.creatorUserId,
+      isBlocking: true,
+    };
+  }
+
+  private async findAcceptedContractRequestsForCalendar(
+    creatorUserId: string,
+    startDateTime: Date,
+    endDateTime: Date,
+  ): Promise<ContractRequest[]> {
+    return this.dataSource
+      .getRepository(ContractRequest)
+      .createQueryBuilder('contractRequest')
+      .leftJoinAndSelect('contractRequest.jobType', 'jobType')
+      .leftJoinAndSelect('contractRequest.companyUser', 'companyUser')
+      .leftJoinAndSelect('companyUser.profile', 'companyUserProfile')
+      .leftJoinAndSelect('companyUser.companyProfile', 'companyUserCompanyProfile')
+      .where('contractRequest.creator_user_id = :creatorUserId', { creatorUserId })
+      .andWhere('contractRequest.status = :status', {
+        status: ContractRequestStatus.ACCEPTED,
+      })
+      .andWhere('contractRequest.starts_at < :endDateTime', { endDateTime })
+      .andWhere(
+        "(contractRequest.starts_at + (contractRequest.duration_minutes || ' minutes')::interval) > :startDateTime",
+        { startDateTime },
+      )
+      .orderBy('contractRequest.starts_at', 'ASC')
+      .getMany();
   }
 }
