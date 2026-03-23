@@ -162,7 +162,10 @@ export class ContractRequestsService {
     );
 
     const items = await this.contractRequestsRepository.listPendingByCreator(creatorUser.id);
-    return items.map((item) => this.buildPayload(item));
+    const payloads = items.map((item) => this.buildCreatorOfferPayload(item));
+    // Ofertas expiradas não aparecem na lista (evita inbox "morta").
+    // Histórico de expiradas pode virar seção futura.
+    return payloads.filter((p) => p.status !== 'EXPIRED');
   }
 
   async accept(user: AuthUser, contractRequestId: string) {
@@ -489,6 +492,50 @@ export class ContractRequestsService {
       rejectionReason: contractRequest.rejectionReason,
       createdAt: contractRequest.createdAt?.toISOString(),
       updatedAt: contractRequest.updatedAt?.toISOString(),
+    };
+  }
+
+  private buildCreatorOfferPayload(contractRequest: ContractRequest) {
+    const base = this.buildPayload(contractRequest);
+    const createdAt = contractRequest.createdAt ?? new Date();
+    const expiresAt = new Date(createdAt.getTime() + 48 * 60 * 60 * 1000);
+    const now = new Date();
+    const isExpired =
+      contractRequest.status === ContractRequestStatus.PENDING_ACCEPTANCE &&
+      now >= expiresAt;
+    const expiresSoon =
+      contractRequest.status === ContractRequestStatus.PENDING_ACCEPTANCE &&
+      !isExpired &&
+      now >= new Date(expiresAt.getTime() - 24 * 60 * 60 * 1000);
+
+    const companyUser = contractRequest.companyUser;
+    const companyName =
+      companyUser?.companyProfile?.companyName ??
+      companyUser?.profile?.name ??
+      'Empresa';
+    const companyLogoUrl = companyUser?.profile?.photoUrl ?? null;
+    const rawRating = companyUser?.profile?.rating;
+    const companyRating =
+      rawRating != null && rawRating > 0 ? rawRating : null;
+
+    const statusMap: Record<ContractRequestStatus, string> = {
+      [ContractRequestStatus.PENDING_ACCEPTANCE]: isExpired ? 'EXPIRED' : 'PENDING',
+      [ContractRequestStatus.ACCEPTED]: 'ACCEPTED',
+      [ContractRequestStatus.REJECTED]: 'REJECTED',
+      [ContractRequestStatus.CANCELLED]: 'CANCELLED',
+      [ContractRequestStatus.COMPLETED]: 'COMPLETED',
+    };
+
+    return {
+      ...base,
+      status: statusMap[contractRequest.status],
+      companyName,
+      companyLogoUrl,
+      companyRating,
+      jobTypeName: contractRequest.jobType?.name ?? null,
+      expiresSoon,
+      expiresAt: expiresAt.toISOString(),
+      totalAmount: contractRequest.totalPrice,
     };
   }
 

@@ -36,7 +36,6 @@ export class ContractRequestsRepository {
   ): Promise<ContractRequest | null> {
     return this.repository(manager).findOne({
       where: { id },
-      relations: ['jobType'],
       lock: { mode: 'pessimistic_write' },
     });
   }
@@ -94,15 +93,24 @@ export class ContractRequestsRepository {
     return query.getMany();
   }
 
-  async listPendingByCreator(creatorUserId: string): Promise<ContractRequest[]> {
-    return this.repo
+  async listPendingByCreator(
+    creatorUserId: string,
+    /** Futuro: 'distance' | 'totalPrice' – produto deve definir padrão de conversão */
+    _sortBy?: 'createdAt' | 'distance' | 'totalPrice',
+  ): Promise<ContractRequest[]> {
+    const qb = this.repo
       .createQueryBuilder('contractRequest')
+      .leftJoinAndSelect('contractRequest.jobType', 'jobType')
+      .leftJoinAndSelect('contractRequest.companyUser', 'companyUser')
+      .leftJoinAndSelect('companyUser.profile', 'companyUserProfile')
+      .leftJoinAndSelect('companyUser.companyProfile', 'companyUserCompanyProfile')
       .where('contractRequest.creator_user_id = :creatorUserId', { creatorUserId })
       .andWhere('contractRequest.status = :status', {
         status: ContractRequestStatus.PENDING_ACCEPTANCE,
       })
-      .orderBy('contractRequest.created_at', 'DESC')
-      .getMany();
+      .orderBy('contractRequest.created_at', 'DESC');
+
+    return qb.getMany();
   }
 
   async save(
