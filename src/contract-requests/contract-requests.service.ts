@@ -25,7 +25,10 @@ import { PaymentStatus } from '../common/enums/payment-status.enum';
 import { ContractRequestStatus } from '../common/enums/contract-request-status.enum';
 import { PreviewContractRequestDto } from './dto/preview-contract-request.dto';
 import { CreateContractRequestDto } from './dto/create-contract-request.dto';
-import { ListCompanyContractRequestsDto } from './dto/list-company-contract-requests.dto';
+import {
+  CompanyCampaignFilterStatus,
+  ListCompanyContractRequestsDto,
+} from './dto/list-company-contract-requests.dto';
 import { RejectContractRequestDto } from './dto/reject-contract-request.dto';
 import { ContractRequest } from './entities/contract-request.entity';
 
@@ -52,6 +55,13 @@ type GeocodingCacheEntry = {
   normalizedAddress: string | null;
   createdAt: number;
 };
+
+type CompanyCampaignStatus =
+  | 'PENDING'
+  | 'ACCEPTED'
+  | 'IN_PROGRESS'
+  | 'COMPLETED'
+  | 'CANCELLED';
 
 @Injectable()
 export class ContractRequestsService {
@@ -147,10 +157,10 @@ export class ContractRequestsService {
 
     const items = await this.contractRequestsRepository.listByCompany({
       companyUserId: companyUser.id,
-      status: query.status,
+      statuses: this.mapCompanyFilterToLegacyStatuses(query.status),
     });
 
-    return items.map((item) => this.buildPayload(item));
+    return items.map((item) => this.buildCompanyCampaignPayload(item));
   }
 
   async listMyCreatorPending(user: AuthUser) {
@@ -495,6 +505,54 @@ export class ContractRequestsService {
     };
   }
 
+  private buildCompanyCampaignPayload(contractRequest: ContractRequest) {
+    const base = this.buildPayload(contractRequest);
+    const status = this.mapCompanyStatus(contractRequest);
+    const startsAt = contractRequest.startsAt;
+    const acceptedAt = this.resolveAcceptedAt(contractRequest, status);
+    const { city, state } = this.extractCityState(contractRequest.jobFormattedAddress, contractRequest.jobAddress);
+    const creatorRatingRaw = contractRequest.creatorUser?.profile?.rating;
+    const creatorRating =
+      creatorRatingRaw != null && creatorRatingRaw > 0 ? creatorRatingRaw : null;
+    const jobTitle = contractRequest.jobType?.name?.trim() || 'Campanha';
+
+    return {
+      ...base,
+      status,
+      legacyStatus: contractRequest.status,
+      creator: {
+        name: contractRequest.creatorNameSnapshot,
+        avatarUrl: contractRequest.creatorAvatarUrlSnapshot,
+        rating: creatorRating,
+      },
+      job: {
+        title: jobTitle,
+        description: contractRequest.description,
+        durationMinutes: contractRequest.durationMinutes,
+      },
+      schedule: {
+        date: startsAt.toISOString(),
+        startTime: startsAt.toISOString(),
+      },
+      location: {
+        city,
+        state,
+      },
+      pricing: {
+        totalAmount: contractRequest.totalPrice,
+        baseAmount: contractRequest.creatorBasePrice,
+        transportAmount: contractRequest.transportFee,
+      },
+      metadata: {
+        createdAt: contractRequest.createdAt?.toISOString() ?? null,
+        acceptedAt,
+      },
+      actions: this.buildCampaignActions(status),
+      jobTypeName: jobTitle,
+      totalAmount: contractRequest.totalPrice,
+    };
+  }
+
   private buildCreatorOfferPayload(contractRequest: ContractRequest) {
     const base = this.buildPayload(contractRequest);
     const createdAt = contractRequest.createdAt ?? new Date();
@@ -537,6 +595,132 @@ export class ContractRequestsService {
       expiresAt: expiresAt.toISOString(),
       totalAmount: contractRequest.totalPrice,
     };
+  }
+
+  private mapCompanyFilterToLegacyStatuses(
+    status?: CompanyCampaignFilterStatus,
+  ): ContractRequestStatus[] | undefined {
+    if (!status) {
+      return undefined;
+    }
+
+    switch (status) {
+      case 'PENDING':
+      case ContractRequestStatus.PENDING_ACCEPTANCE:
+        return [ContractRequestStatus.PENDING_ACCEPTANCE];
+      case 'ACCEPTED':
+      case ContractRequestStatus.ACCEPTED:
+        return [ContractRequestStatus.ACCEPTED];
+      case 'IN_PROGRESS':
+        return [ContractRequestStatus.ACCEPTED];
+      case 'COMPLETED':
+      case ContractRequestStatus.COMPLETED:
+        return [ContractRequestStatus.COMPLETED];
+      case 'CANCELLED':
+      case ContractRequestStatus.CANCELLED:
+      case ContractRequestStatus.REJECTED:
+        return [ContractRequestStatus.CANCELLED, ContractRequestStatus.REJECTED];
+      default:
+        return undefined;
+    }
+  }
+
+  private mapCompanyStatus(contractRequest: ContractRequest): CompanyCampaignStatus {
+    const endsAt = this.calculateEndDate(contractRequest.startsAt, contractRequest.durationMinutes);
+    const now = new Date();
+
+    if (
+      contractRequest.status === ContractRequestStatus.CANCELLED ||
+      contractRequest.status === ContractRequestStatus.REJECTED
+    ) {
+      return 'CANCELLED';
+    }
+
+    if (contractRequest.status === ContractRequestStatus.COMPLETED) {
+      return 'COMPLETED';
+    }
+
+    if (contractRequest.status === ContractRequestStatus.PENDING_ACCEPTANCE) {
+      return 'PENDING';
+    }
+
+    if (contractRequest.status === ContractRequestStatus.ACCEPTED) {
+      if (now >= endsAt) {
+        return 'COMPLETED';
+      }
+
+      if (now >= contractRequest.startsAt) {
+        return 'IN_PROGRESS';
+      }
+
+      return 'ACCEPTED';
+    }
+
+    return 'PENDING';
+  }
+
+  private buildCampaignActions(status: CompanyCampaignStatus) {
+    return {
+      canCancel: status === 'PENDING',
+      canChat: status === 'ACCEPTED',
+      canViewDetails:
+        status === 'ACCEPTED' || status === 'IN_PROGRESS' || status === 'COMPLETED',
+    };
+  }
+
+  private resolveAcceptedAt(
+    contractRequest: ContractRequest,
+    status: CompanyCampaignStatus,
+  ): string | null {
+    if (status === 'PENDING' || status === 'CANCELLED') {
+      return null;
+    }
+
+    return contractRequest.updatedAt?.toISOString() ?? null;
+  }
+
+  private extractCityState(
+    formattedAddress: string | null,
+    fallbackAddress: string,
+  ): { city: string | null; state: string | null } {
+    const source = (formattedAddress || fallbackAddress || '').trim();
+    if (!source) {
+      return { city: null, state: null };
+    }
+
+    const parts = source
+      .split(',')
+      .map((part) => part.trim())
+      .filter(Boolean);
+
+    if (!parts.length) {
+      return { city: null, state: null };
+    }
+
+    let state: string | null = null;
+    let city: string | null = null;
+
+    for (let i = parts.length - 1; i >= 0; i -= 1) {
+      const token = parts[i];
+      const upperToken = token.toUpperCase();
+      if (/^[A-Z]{2}$/.test(upperToken)) {
+        state = upperToken;
+        city = i > 0 ? parts[i - 1] : null;
+        break;
+      }
+    }
+
+    if (!city) {
+      city = parts.length >= 2 ? parts[parts.length - 2] : parts[0];
+    }
+
+    if (!state) {
+      const lastToken = parts[parts.length - 1];
+      const stateMatch = lastToken.match(/\b([A-Z]{2})\b/);
+      state = stateMatch ? stateMatch[1] : null;
+    }
+
+    return { city: city || null, state };
   }
 
   private calculateEndDate(startsAt: Date, durationMinutes: number): Date {

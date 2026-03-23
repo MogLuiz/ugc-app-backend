@@ -75,18 +75,21 @@ export class ContractRequestsRepository {
 
   async listByCompany(params: {
     companyUserId: string;
-    status?: ContractRequestStatus;
+    statuses?: ContractRequestStatus[];
   }): Promise<ContractRequest[]> {
     const query = this.repo
       .createQueryBuilder('contractRequest')
+      .leftJoinAndSelect('contractRequest.jobType', 'jobType')
+      .leftJoinAndSelect('contractRequest.creatorUser', 'creatorUser')
+      .leftJoinAndSelect('creatorUser.profile', 'creatorProfile')
       .where('contractRequest.company_user_id = :companyUserId', {
         companyUserId: params.companyUserId,
       })
       .orderBy('contractRequest.created_at', 'DESC');
 
-    if (params.status) {
-      query.andWhere('contractRequest.status = :status', {
-        status: params.status,
+    if (params.statuses?.length) {
+      query.andWhere('contractRequest.status IN (:...statuses)', {
+        statuses: params.statuses,
       });
     }
 
