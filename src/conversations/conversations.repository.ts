@@ -63,10 +63,18 @@ export class ConversationsRepository {
     contractRequestId: string,
     manager: EntityManager,
   ): Promise<Conversation | null> {
-    return this.conversationRepository(manager).findOne({
+    // Lock only the conversation row. PostgreSQL rejects FOR UPDATE when TypeORM
+    // adds LEFT JOINs for OneToMany relations (nullable side of outer join).
+    const locked = await this.conversationRepository(manager).findOne({
       where: { contractRequestId },
-      relations: ['participants'],
       lock: { mode: 'pessimistic_write' },
+    });
+    if (!locked) {
+      return null;
+    }
+    return this.conversationRepository(manager).findOne({
+      where: { id: locked.id },
+      relations: ['participants'],
     });
   }
 
