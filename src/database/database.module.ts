@@ -13,6 +13,9 @@ import { Booking } from '../bookings/entities/booking.entity';
 import { CreatorJobType } from '../creator-job-types/entities/creator-job-type.entity';
 import { ContractRequest } from '../contract-requests/entities/contract-request.entity';
 import { PlatformSetting } from '../platform-settings/entities/platform-setting.entity';
+import { Conversation } from '../conversations/entities/conversation.entity';
+import { ConversationParticipant } from '../conversations/entities/conversation-participant.entity';
+import { Message } from '../conversations/entities/message.entity';
 
 @Module({
   imports: [
@@ -36,6 +39,9 @@ import { PlatformSetting } from '../platform-settings/entities/platform-setting.
               Booking,
               ContractRequest,
               PlatformSetting,
+              Conversation,
+              ConversationParticipant,
+              Message,
             ],
             synchronize: false,
             logging: configService.get<string>('NODE_ENV') === 'development',
@@ -64,6 +70,9 @@ import { PlatformSetting } from '../platform-settings/entities/platform-setting.
             Booking,
             ContractRequest,
             PlatformSetting,
+            Conversation,
+            ConversationParticipant,
+            Message,
           ],
           synchronize: false,
           logging: configService.get<string>('NODE_ENV') === 'development',

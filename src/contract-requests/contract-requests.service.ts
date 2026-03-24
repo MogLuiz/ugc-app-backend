@@ -31,6 +31,7 @@ import {
 } from './dto/list-company-contract-requests.dto';
 import { RejectContractRequestDto } from './dto/reject-contract-request.dto';
 import { ContractRequest } from './entities/contract-request.entity';
+import { ConversationsService } from '../conversations/conversations.service';
 
 type PreparedContractRequest = {
   companyUser: User;
@@ -81,6 +82,7 @@ export class ContractRequestsService {
     private readonly distanceService: DistanceService,
     private readonly pricingService: PricingService,
     private readonly schedulingConflictService: SchedulingConflictService,
+    private readonly conversationsService: ConversationsService,
   ) {}
 
   async preview(user: AuthUser, dto: PreviewContractRequestDto) {
@@ -143,6 +145,14 @@ export class ContractRequestsService {
         },
         manager,
       );
+
+      if (created.status === ContractRequestStatus.ACCEPTED) {
+        await this.conversationsService.ensureConversationForContractRequest(
+          created.id,
+          prepared.companyUser.id,
+          manager,
+        );
+      }
 
       return this.buildPayload(created);
     });
@@ -208,6 +218,13 @@ export class ContractRequestsService {
       contractRequest.rejectionReason = null;
 
       const updated = await this.contractRequestsRepository.save(contractRequest, manager);
+
+      await this.conversationsService.ensureConversationForContractRequest(
+        updated.id,
+        actor.id,
+        manager,
+      );
+
       return this.buildPayload(updated);
     });
   }

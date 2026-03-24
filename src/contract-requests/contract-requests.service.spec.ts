@@ -135,6 +135,9 @@ describe('ContractRequestsService', () => {
     const schedulingConflictService = {
       hasConflicts: jest.fn().mockResolvedValue(false),
     };
+    const conversationsService = {
+      ensureConversationForContractRequest: jest.fn().mockResolvedValue(undefined),
+    };
     const configService = {
       get: jest.fn().mockImplementation((key: string) => {
         if (key === 'DEFAULT_CREATOR_SERVICE_RADIUS_KM') return 30;
@@ -157,6 +160,7 @@ describe('ContractRequestsService', () => {
       distanceService as never,
       pricingService as never,
       schedulingConflictService as never,
+      conversationsService as never,
     );
 
     return {
@@ -175,6 +179,7 @@ describe('ContractRequestsService', () => {
         distanceService,
         pricingService,
         schedulingConflictService,
+        conversationsService,
         configService,
       },
     };

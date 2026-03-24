@@ -6,6 +6,7 @@ import { CreatorJobTypesModule } from '../creator-job-types/creator-job-types.mo
 import { PlatformSettingsModule } from '../platform-settings/platform-settings.module';
 import { GeocodingModule } from '../geocoding/geocoding.module';
 import { SchedulingModule } from '../scheduling/scheduling.module';
+import { ConversationsModule } from '../conversations/conversations.module';
 import { ContractRequestsController } from './contract-requests.controller';
 import { ContractRequestsService } from './contract-requests.service';
 import { DistanceService } from './services/distance.service';
@@ -21,6 +22,7 @@ import { TransportService } from './services/transport.service';
     PlatformSettingsModule,
     GeocodingModule,
     SchedulingModule,
+    ConversationsModule,
   ],
   controllers: [ContractRequestsController],
   providers: [ContractRequestsService, DistanceService, TransportService, PricingService],
