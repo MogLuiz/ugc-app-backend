@@ -263,6 +263,11 @@ export class BookingsService {
   }
 
   private buildCalendarItemPayload(booking: Booking) {
+    const companyName =
+      booking.companyUser?.companyProfile?.companyName ??
+      booking.companyUser?.profile?.name ??
+      null;
+
     return {
       id: booking.id,
       title: booking.title,
@@ -281,6 +286,9 @@ export class BookingsService {
       },
       companyUserId: booking.companyUserId,
       creatorUserId: booking.creatorUserId,
+      companyName,
+      contractRequestId: null,
+      location: null,
       isBlocking: BLOCKING_BOOKING_STATUSES.includes(booking.status),
     };
   }
@@ -294,6 +302,9 @@ export class BookingsService {
     const companyName =
       contractRequest.companyUser?.companyProfile?.companyName ??
       contractRequest.companyUser?.profile?.name;
+
+    const location =
+      contractRequest.jobFormattedAddress ?? contractRequest.jobAddress ?? null;
 
     return {
       id: `contract-request-${contractRequest.id}`,
@@ -313,6 +324,9 @@ export class BookingsService {
       },
       companyUserId: contractRequest.companyUserId,
       creatorUserId: contractRequest.creatorUserId,
+      companyName: companyName ?? null,
+      contractRequestId: contractRequest.id,
+      location,
       isBlocking: true,
     };
   }

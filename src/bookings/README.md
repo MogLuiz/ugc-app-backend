@@ -47,6 +47,9 @@ Estes sao os campos que novos consumidores devem preferir:
 - `endDateTime`
 - `jobTypeName`
 - `durationMinutes`
+- `companyName` (nullable) — nome de exibicao da empresa
+- `contractRequestId` (nullable) — UUID do contract request quando a linha vem de oferta aceita
+- `location` (nullable) — endereco ou texto de local quando existir (ex. contract request)
 
 ### Campos legados temporarios
 

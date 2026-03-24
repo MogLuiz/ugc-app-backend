@@ -66,6 +66,9 @@ export class BookingsRepository {
     return this.repo
       .createQueryBuilder('booking')
       .leftJoinAndSelect('booking.jobType', 'jobType')
+      .leftJoinAndSelect('booking.companyUser', 'companyUser')
+      .leftJoinAndSelect('companyUser.profile', 'companyUserProfile')
+      .leftJoinAndSelect('companyUser.companyProfile', 'companyUserCompanyProfile')
       .where('booking.creator_user_id = :creatorUserId', { creatorUserId })
       .andWhere('booking.start_date_time < :endDateTime', { endDateTime })
       .andWhere('booking.end_date_time > :startDateTime', { startDateTime })
