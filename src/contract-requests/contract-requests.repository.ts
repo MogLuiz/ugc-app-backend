@@ -96,6 +96,82 @@ export class ContractRequestsRepository {
     return query.getMany();
   }
 
+  async getCreatorDashboardAggregates(creatorUserId: string): Promise<{
+    confirmedCampaigns: number;
+    pendingInvites: number;
+    /** MVP temporário: soma de total_price onde ACCEPTED (ver CreatorService). */
+    earningsSumAccepted: number;
+  }> {
+    const confirmedCampaigns = await this.repo.count({
+      where: {
+        creatorUserId,
+        status: ContractRequestStatus.ACCEPTED,
+      },
+    });
+
+    const pendingInvites = await this.repo.count({
+      where: {
+        creatorUserId,
+        status: ContractRequestStatus.PENDING_ACCEPTANCE,
+      },
+    });
+
+    const sumRow = await this.repo
+      .createQueryBuilder('cr')
+      .select('COALESCE(SUM(cr.total_price), 0)', 'sum')
+      .where('cr.creator_user_id = :creatorUserId', { creatorUserId })
+      .andWhere('cr.status = :status', { status: ContractRequestStatus.ACCEPTED })
+      .getRawOne<{ sum: string }>();
+
+    const earningsSumAccepted = parseFloat(sumRow?.sum ?? '0');
+    return {
+      confirmedCampaigns,
+      pendingInvites,
+      earningsSumAccepted: Number.isFinite(earningsSumAccepted) ? earningsSumAccepted : 0,
+    };
+  }
+
+  /**
+   * Campanhas aceitas com gravação a partir de `fromInclusive` (inclusive), ordenadas por data.
+   */
+  async listAcceptedUpcomingForCreator(
+    creatorUserId: string,
+    fromInclusive: Date,
+  ): Promise<ContractRequest[]> {
+    return this.repo
+      .createQueryBuilder('contractRequest')
+      .leftJoinAndSelect('contractRequest.jobType', 'jobType')
+      .leftJoinAndSelect('contractRequest.companyUser', 'companyUser')
+      .leftJoinAndSelect('companyUser.profile', 'companyUserProfile')
+      .leftJoinAndSelect('companyUser.companyProfile', 'companyUserCompanyProfile')
+      .where('contractRequest.creator_user_id = :creatorUserId', { creatorUserId })
+      .andWhere('contractRequest.status = :status', {
+        status: ContractRequestStatus.ACCEPTED,
+      })
+      .andWhere('contractRequest.starts_at >= :fromInclusive', { fromInclusive })
+      .orderBy('contractRequest.startsAt', 'ASC')
+      .getMany();
+  }
+
+  /**
+   * Dataset simples para o feed de atividade: contratos do creator ordenados por updated_at.
+   */
+  async listRecentForCreatorActivity(
+    creatorUserId: string,
+    limit: number,
+  ): Promise<ContractRequest[]> {
+    return this.repo
+      .createQueryBuilder('contractRequest')
+      .leftJoinAndSelect('contractRequest.jobType', 'jobType')
+      .leftJoinAndSelect('contractRequest.companyUser', 'companyUser')
+      .leftJoinAndSelect('companyUser.profile', 'companyUserProfile')
+      .leftJoinAndSelect('companyUser.companyProfile', 'companyUserCompanyProfile')
+      .where('contractRequest.creator_user_id = :creatorUserId', { creatorUserId })
+      .orderBy('contractRequest.updatedAt', 'DESC')
+      .limit(limit)
+      .getMany();
+  }
+
   async listPendingByCreator(
     creatorUserId: string,
     /** Futuro: 'distance' | 'totalPrice' – produto deve definir padrão de conversão */
@@ -111,7 +187,7 @@ export class ContractRequestsRepository {
       .andWhere('contractRequest.status = :status', {
         status: ContractRequestStatus.PENDING_ACCEPTANCE,
       })
-      .orderBy('contractRequest.created_at', 'DESC');
+      .orderBy('contractRequest.createdAt', 'DESC');
 
     return qb.getMany();
   }

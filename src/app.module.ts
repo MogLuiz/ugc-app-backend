@@ -13,6 +13,7 @@ import { BookingsModule } from './bookings/bookings.module';
 import { CreatorJobTypesModule } from './creator-job-types/creator-job-types.module';
 import { ContractRequestsModule } from './contract-requests/contract-requests.module';
 import { ConversationsModule } from './conversations/conversations.module';
+import { CreatorModule } from './creator/creator.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { ConversationsModule } from './conversations/conversations.module';
     BookingsModule,
     ContractRequestsModule,
     ConversationsModule,
+    CreatorModule,
     UploadsModule,
     HealthModule,
   ],
