@@ -1,4 +1,5 @@
-import { IsIn, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
+import { Type } from 'class-transformer';
+import { IsIn, IsInt, IsOptional, IsString, IsUUID, Max, MaxLength, Min } from 'class-validator';
 
 const MARKETPLACE_SORT_OPTIONS = ['relevancia', 'preco', 'avaliacao'] as const;
 
@@ -26,4 +27,18 @@ export class ListMarketplaceCreatorsDto {
   @IsOptional()
   @IsString()
   limit?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(120)
+  minAge?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(120)
+  maxAge?: number;
 }

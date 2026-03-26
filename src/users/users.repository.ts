@@ -4,6 +4,13 @@ import { Brackets, Repository } from 'typeorm';
 import { User } from './entities/user.entity';
 import { UserRole } from '../common/enums/user-role.enum';
 import type { MarketplaceSortBy } from '../profiles/dto/list-marketplace-creators.dto';
+import { AGE_YEARS_SQL } from './marketplace-creator-age-sql';
+
+function mapRawAgeYears(value: string | number | null | undefined): number | null {
+  if (value == null) return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
 
 export type MarketplaceCreatorListItem = {
   id: string;
@@ -16,7 +23,11 @@ export type MarketplaceCreatorListItem = {
   tags: string[];
   niche: string;
   minPrice: number | null;
+  ageYears: number | null;
 };
+
+/** Resposta pública de item na listagem GET /profiles/creators (sem birth_date). */
+export type MarketplaceCreatorListItemResponse = MarketplaceCreatorListItem;
 
 export type MarketplaceCreatorDetailItem = MarketplaceCreatorListItem & {
   addressCity: string | null;
@@ -33,6 +44,8 @@ export type ListMarketplaceCreatorsParams = {
   sortBy: MarketplaceSortBy;
   page: number;
   limit: number;
+  minAge?: number;
+  maxAge?: number;
 };
 
 @Injectable()
@@ -105,6 +118,21 @@ export class UsersRepository {
       });
     }
 
+    const ageFilterBase =
+      'profile.birth_date IS NOT NULL AND profile.birth_date <= CURRENT_DATE';
+    if (params.minAge != null) {
+      baseQuery.andWhere(
+        `${ageFilterBase} AND (${AGE_YEARS_SQL}) >= :minAge`,
+        { minAge: params.minAge },
+      );
+    }
+    if (params.maxAge != null) {
+      baseQuery.andWhere(
+        `${ageFilterBase} AND (${AGE_YEARS_SQL}) <= :maxAge`,
+        { maxAge: params.maxAge },
+      );
+    }
+
     const total = await baseQuery
       .clone()
       .select('user.id')
@@ -138,6 +166,10 @@ export class UsersRepository {
           END
         `,
         'location',
+      )
+      .addSelect(
+        `CASE WHEN profile.birth_date IS NOT NULL AND profile.birth_date <= CURRENT_DATE THEN ${AGE_YEARS_SQL} ELSE NULL END`,
+        'ageYears',
       )
       .addSelect(
         `COALESCE(NULLIF(MIN(jt.name), ''), 'Serviços UGC')`,
@@ -193,6 +225,7 @@ export class UsersRepository {
         niche: string | null;
         tags: string[] | null;
         minPrice: string | number | null;
+        ageYears: string | number | null;
       }>();
 
     return {
@@ -213,6 +246,7 @@ export class UsersRepository {
             : typeof row.minPrice === 'number'
               ? row.minPrice
               : parseFloat(row.minPrice),
+        ageYears: mapRawAgeYears(row.ageYears),
       })),
       total,
     };
@@ -264,6 +298,10 @@ export class UsersRepository {
         'location',
       )
       .addSelect(
+        `CASE WHEN profile.birth_date IS NOT NULL AND profile.birth_date <= CURRENT_DATE THEN ${AGE_YEARS_SQL} ELSE NULL END`,
+        'ageYears',
+      )
+      .addSelect(
         `COALESCE(NULLIF(MIN(jt.name), ''), 'Serviços UGC')`,
         'niche',
       )
@@ -308,6 +346,7 @@ export class UsersRepository {
         niche: string | null;
         tags: string[] | null;
         minPrice: string | number | null;
+        ageYears: string | number | null;
       }>();
 
     if (!row) {
@@ -323,6 +362,7 @@ export class UsersRepository {
         typeof row.rating === 'number' ? row.rating : parseFloat(row.rating ?? '0'),
       location: row.location,
       bio: row.bio,
+      ageYears: mapRawAgeYears(row.ageYears),
       addressCity: row.addressCity,
       addressState: row.addressState,
       creatorLatitude:

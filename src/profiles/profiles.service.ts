@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
 import { Repository } from 'typeorm';
@@ -163,12 +163,19 @@ export class ProfilesService {
       MAX_MARKETPLACE_LIMIT,
     );
     const sortBy = this.normalizeSortBy(query.sortBy);
+    const minAge = query.minAge;
+    const maxAge = query.maxAge;
+    if (minAge != null && maxAge != null && minAge > maxAge) {
+      throw new BadRequestException('minAge não pode ser maior que maxAge');
+    }
     const result = await this.usersRepository.listMarketplaceCreators({
       search: query.search?.trim() || undefined,
       serviceTypeId: query.serviceTypeId,
       sortBy,
       page,
       limit,
+      minAge,
+      maxAge,
     });
 
     return {
@@ -234,6 +241,7 @@ export class ProfilesService {
       tags: creator.tags,
       niche: creator.niche,
       minPrice: creator.minPrice,
+      ageYears: creator.ageYears,
       distance: this.distanceService.buildSummary(distanceKm, effectiveServiceRadiusKm),
       services: creatorJobTypes
         .filter((item) => item.jobType.mode === JobMode.PRESENTIAL)
