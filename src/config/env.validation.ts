@@ -93,6 +93,10 @@ export class EnvValidation {
   PORTFOLIO_VIDEO_BUCKET: string = 'portfolio-videos';
 
   @IsOptional()
+  @IsString()
+  GOOGLE_MAPS_API_KEY: string = '';
+
+  @IsOptional()
   @IsEnum(GeocodingStubMode)
   GEOCODING_STUB_MODE: GeocodingStubMode =
     process.env.NODE_ENV === 'development'
