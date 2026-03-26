@@ -267,6 +267,7 @@ export class BookingsService {
       booking.companyUser?.companyProfile?.companyName ??
       booking.companyUser?.profile?.name ??
       null;
+    const profile = booking.companyUser?.profile;
 
     return {
       id: booking.id,
@@ -287,6 +288,9 @@ export class BookingsService {
       companyUserId: booking.companyUserId,
       creatorUserId: booking.creatorUserId,
       companyName,
+      companyPhotoUrl: profile?.photoUrl ?? null,
+      companyRating: profile?.rating ?? null,
+      distanceKm: null,
       contractRequestId: null,
       location: null,
       isBlocking: BLOCKING_BOOKING_STATUSES.includes(booking.status),
@@ -305,6 +309,7 @@ export class BookingsService {
 
     const location =
       contractRequest.jobFormattedAddress ?? contractRequest.jobAddress ?? null;
+    const crProfile = contractRequest.companyUser?.profile;
 
     return {
       id: `contract-request-${contractRequest.id}`,
@@ -325,6 +330,9 @@ export class BookingsService {
       companyUserId: contractRequest.companyUserId,
       creatorUserId: contractRequest.creatorUserId,
       companyName: companyName ?? null,
+      companyPhotoUrl: crProfile?.photoUrl ?? null,
+      companyRating: crProfile?.rating ?? null,
+      distanceKm: contractRequest.distanceKm ?? null,
       contractRequestId: contractRequest.id,
       location,
       isBlocking: true,

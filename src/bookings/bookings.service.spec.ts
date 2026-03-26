@@ -146,6 +146,14 @@ describe('BookingsService', () => {
         durationMinutesSnapshot: 60,
         companyUserId: companyUser.id,
         creatorUserId: creatorUser.id,
+        companyUser: {
+          profile: {
+            photoUrl: 'https://example.com/logo.png',
+            rating: 4.5,
+          },
+          companyProfile: { companyName: 'Acme Corp' },
+        },
+        jobType: { id: 'job-type-1', name: 'Briefing Remoto' },
       },
     ]);
     contractRequestsQueryBuilder.getMany.mockResolvedValue([]);
@@ -283,6 +291,9 @@ describe('BookingsService', () => {
       },
       origin: BookingOrigin.COMPANY_REQUEST,
       isBlocking: true,
+      companyPhotoUrl: 'https://example.com/logo.png',
+      companyRating: 4.5,
+      distanceKm: null,
     });
   });
 
@@ -298,10 +309,11 @@ describe('BookingsService', () => {
         status: ContractRequestStatus.ACCEPTED,
         startsAt: new Date('2099-03-18T15:00:00.000Z'),
         durationMinutes: 120,
+        distanceKm: 3.2,
         jobType: { id: 'job-type-1', name: 'Presenca em evento' },
         companyUser: {
           companyProfile: { companyName: 'Acme Corp' },
-          profile: { name: 'Acme' },
+          profile: { name: 'Acme', photoUrl: null, rating: 4.2 },
         },
       },
     ]);
@@ -329,6 +341,8 @@ describe('BookingsService', () => {
             name: 'Presenca em evento',
           },
           isBlocking: true,
+          distanceKm: 3.2,
+          companyRating: 4.2,
         }),
       ]),
     );
