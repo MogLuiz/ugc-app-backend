@@ -11,6 +11,7 @@ import { AddContractRequestsCore1766100000000 } from './migrations/1766100000000
 import { AddJobTypeDescription1766200000000 } from './migrations/1766200000000-AddJobTypeDescription';
 import { AddProfileLocationCore1766300000000 } from './migrations/1766300000000-AddProfileLocationCore';
 import { AddConversationsCore1766400000000 } from './migrations/1766400000000-AddConversationsCore';
+import { DropCreatorProfileLocation1766500000000 } from './migrations/1766500000000-DropCreatorProfileLocation';
 
 config();
 
@@ -34,6 +35,7 @@ export const AppDataSource = new DataSource(
           AddJobTypeDescription1766200000000,
           AddProfileLocationCore1766300000000,
           AddConversationsCore1766400000000,
+          DropCreatorProfileLocation1766500000000,
         ],
         synchronize: false,
         logging: process.env.NODE_ENV === 'development',
@@ -59,6 +61,7 @@ export const AppDataSource = new DataSource(
           AddJobTypeDescription1766200000000,
           AddProfileLocationCore1766300000000,
           AddConversationsCore1766400000000,
+          DropCreatorProfileLocation1766500000000,
         ],
         synchronize: false,
         logging: process.env.NODE_ENV === 'development',

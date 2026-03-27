@@ -45,30 +45,6 @@ export class CreatorProfile {
   })
   serviceRadiusKm: number | null;
 
-  @Column({
-    type: 'decimal',
-    precision: 10,
-    scale: 7,
-    nullable: true,
-    transformer: {
-      to: (value?: number | null) => value ?? null,
-      from: (value: string | null) => (value == null ? null : parseFloat(value)),
-    },
-  })
-  latitude: number | null;
-
-  @Column({
-    type: 'decimal',
-    precision: 10,
-    scale: 7,
-    nullable: true,
-    transformer: {
-      to: (value?: number | null) => value ?? null,
-      from: (value: string | null) => (value == null ? null : parseFloat(value)),
-    },
-  })
-  longitude: number | null;
-
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

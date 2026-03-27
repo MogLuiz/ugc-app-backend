@@ -24,6 +24,9 @@ export type MarketplaceCreatorListItem = {
   niche: string;
   minPrice: number | null;
   ageYears: number | null;
+  creatorLatitude: number | null;
+  creatorLongitude: number | null;
+  creatorHasValidCoordinates: boolean;
 };
 
 /** Resposta pública de item na listagem GET /profiles/creators (sem birth_date). */
@@ -226,6 +229,9 @@ export class UsersRepository {
         tags: string[] | null;
         minPrice: string | number | null;
         ageYears: string | number | null;
+        creatorLatitude: string | number | null;
+        creatorLongitude: string | number | null;
+        creatorHasValidCoordinates: boolean | null;
       }>();
 
     return {
@@ -247,6 +253,19 @@ export class UsersRepository {
               ? row.minPrice
               : parseFloat(row.minPrice),
         ageYears: mapRawAgeYears(row.ageYears),
+        creatorLatitude:
+          row.creatorLatitude == null
+            ? null
+            : typeof row.creatorLatitude === 'number'
+              ? row.creatorLatitude
+              : parseFloat(row.creatorLatitude),
+        creatorLongitude:
+          row.creatorLongitude == null
+            ? null
+            : typeof row.creatorLongitude === 'number'
+              ? row.creatorLongitude
+              : parseFloat(row.creatorLongitude),
+        creatorHasValidCoordinates: row.creatorHasValidCoordinates === true,
       })),
       total,
     };

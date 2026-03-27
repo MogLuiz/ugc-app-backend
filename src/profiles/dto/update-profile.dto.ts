@@ -47,6 +47,7 @@ export class UpdateProfileDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(500)
   bio?: string;
 
   @IsOptional()
