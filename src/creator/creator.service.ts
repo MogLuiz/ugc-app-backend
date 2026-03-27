@@ -15,7 +15,7 @@ export class CreatorService {
   constructor(
     private readonly contractRequestsRepository: ContractRequestsRepository,
     private readonly usersRepository: UsersRepository,
-  ) {}
+  ) { }
 
   async getDashboard(user: AuthUser) {
     const creator = await this.requireCreator(user);
@@ -91,6 +91,7 @@ export class CreatorService {
       proposedDate: contractRequest.startsAt.toISOString(),
       payment: contractRequest.totalPrice,
       status: 'PENDING' as const,
+      distanceKm: contractRequest.distanceKm ?? null,
     };
   }
 
@@ -139,7 +140,7 @@ export class CreatorService {
 
     const endsAt = new Date(
       contractRequest.startsAt.getTime() +
-        contractRequest.durationMinutes * 60 * 1000,
+      contractRequest.durationMinutes * 60 * 1000,
     );
     const now = new Date();
 
