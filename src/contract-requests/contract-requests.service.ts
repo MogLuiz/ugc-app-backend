@@ -264,6 +264,26 @@ export class ContractRequestsService {
     });
   }
 
+  async cancel(user: AuthUser, contractRequestId: string) {
+    return this.dataSource.transaction(async (manager) => {
+      const actor = await this.findActorForUpdate(user.authUserId, manager);
+      const contractRequest = await this.getContractRequestForUpdate(contractRequestId, manager);
+
+      this.ensureCreatorOwnsContractRequest(actor, contractRequest);
+
+      if (contractRequest.status !== ContractRequestStatus.ACCEPTED) {
+        throw new BadRequestException(
+          `Não é possível desmarcar uma contratação com status ${contractRequest.status}`,
+        );
+      }
+
+      contractRequest.status = ContractRequestStatus.CANCELLED;
+
+      const updated = await this.contractRequestsRepository.save(contractRequest, manager);
+      return this.buildPayload(updated);
+    });
+  }
+
   private async prepareContractRequest(
     user: AuthUser,
     dto: PreviewContractRequestDto | CreateContractRequestDto,

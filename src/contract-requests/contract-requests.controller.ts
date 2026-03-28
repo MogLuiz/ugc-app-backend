@@ -75,4 +75,9 @@ export class ContractRequestsController {
   ) {
     return this.contractRequestsService.reject(user, id, dto);
   }
+
+  @Patch(':id/cancel')
+  async cancel(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.contractRequestsService.cancel(user, id);
+  }
 }
