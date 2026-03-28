@@ -7,6 +7,7 @@ import { UserRole } from '../common/enums/user-role.enum';
 import { JobMode } from '../common/enums/job-mode.enum';
 import { PaymentStatus } from '../common/enums/payment-status.enum';
 import { ContractRequestStatus } from '../common/enums/contract-request-status.enum';
+import { CONTRACT_REQUEST_COMPLETED_EVENT } from './events/contract-request-completed.event';
 
 describe('PricingService', () => {
   it('calculates transport fee with minimum floor', () => {
@@ -138,6 +139,9 @@ describe('ContractRequestsService', () => {
     const conversationsService = {
       ensureConversationForContractRequest: jest.fn().mockResolvedValue(undefined),
     };
+    const eventEmitter = {
+      emit: jest.fn(),
+    };
     const configService = {
       get: jest.fn().mockImplementation((key: string) => {
         if (key === 'DEFAULT_CREATOR_SERVICE_RADIUS_KM') return 30;
@@ -161,6 +165,7 @@ describe('ContractRequestsService', () => {
       pricingService as never,
       schedulingConflictService as never,
       conversationsService as never,
+      eventEmitter as never,
     );
 
     return {
@@ -180,6 +185,7 @@ describe('ContractRequestsService', () => {
         pricingService,
         schedulingConflictService,
         conversationsService,
+        eventEmitter,
         configService,
       },
     };
@@ -491,5 +497,181 @@ describe('ContractRequestsService', () => {
     await service.create({ authUserId: 'auth-company' }, payload);
 
     expect(mocks.geocodingService.geocodeAddress).toHaveBeenCalledTimes(1);
+  });
+
+  describe('complete()', () => {
+    function setupCompleteTest(overrides: {
+      actorRole?: string;
+      actorId?: string;
+      actorAuthUserId?: string;
+      contractStatus?: ContractRequestStatus;
+      contractCompanyUserId?: string;
+      startsAt?: Date;
+      durationMinutes?: number;
+    } = {}) {
+      const { service, mocks } = createService();
+
+      const actor = {
+        id: overrides.actorId ?? 'company-1',
+        authUserId: overrides.actorAuthUserId ?? 'auth-company',
+        role: overrides.actorRole ?? UserRole.COMPANY,
+        profile: { name: 'Empresa X' },
+        companyProfile: { companyName: 'Empresa X LTDA' },
+      };
+      const actorRepo = {
+        findOne: jest.fn().mockResolvedValue(actor),
+      };
+      const manager = {
+        getRepository: jest.fn().mockReturnValue(actorRepo),
+      };
+      (mocks.dataSource as any).transaction = jest.fn(async (callback: any) =>
+        callback(manager),
+      );
+
+      const pastDate = new Date('2026-03-20T10:00:00.000Z');
+      const contractRequest = {
+        id: 'contract-1',
+        companyUserId: overrides.contractCompanyUserId ?? 'company-1',
+        creatorUserId: 'creator-1',
+        jobTypeId: 'job-type-1',
+        mode: JobMode.PRESENTIAL,
+        description: 'Captação presencial',
+        status: overrides.contractStatus ?? ContractRequestStatus.ACCEPTED,
+        paymentStatus: PaymentStatus.PAID,
+        currency: 'BRL',
+        termsAcceptedAt: pastDate,
+        startsAt: overrides.startsAt ?? pastDate,
+        durationMinutes: overrides.durationMinutes ?? 120,
+        jobAddress: 'Av. Paulista, 1000',
+        jobFormattedAddress: 'Av. Paulista, 1000, Sao Paulo, SP',
+        jobLatitude: -23.561684,
+        jobLongitude: -46.625378,
+        distanceKm: 10,
+        effectiveServiceRadiusKmUsed: 20,
+        transportFee: 35,
+        creatorBasePrice: 250,
+        platformFee: 0,
+        totalPrice: 285,
+        transportPricePerKmUsed: 3.5,
+        transportMinimumFeeUsed: 15,
+        creatorNameSnapshot: 'Creator Teste',
+        creatorAvatarUrlSnapshot: null,
+        rejectionReason: null,
+        completedAt: null,
+        createdAt: pastDate,
+        updatedAt: pastDate,
+      };
+
+      mocks.contractRequestsRepository.findByIdForUpdate.mockResolvedValue(contractRequest);
+      mocks.contractRequestsRepository.save.mockImplementation(async (payload) => payload);
+
+      return { service, mocks, contractRequest };
+    }
+
+    it('completes an accepted contract request', async () => {
+      const { service, mocks } = setupCompleteTest();
+
+      const result = await service.complete(
+        { authUserId: 'auth-company' },
+        'contract-1',
+      );
+
+      expect(result.status).toBe(ContractRequestStatus.COMPLETED);
+      expect(result.completedAt).toBeDefined();
+      expect(result.completedAt).not.toBeNull();
+    });
+
+    it('emits contract-request.completed event with correct payload', async () => {
+      const { service, mocks } = setupCompleteTest();
+
+      await service.complete(
+        { authUserId: 'auth-company' },
+        'contract-1',
+      );
+
+      expect(mocks.eventEmitter.emit).toHaveBeenCalledTimes(1);
+      expect(mocks.eventEmitter.emit).toHaveBeenCalledWith(
+        CONTRACT_REQUEST_COMPLETED_EVENT,
+        expect.objectContaining({
+          contractRequestId: 'contract-1',
+          creatorUserId: 'creator-1',
+          companyUserId: 'company-1',
+          creatorBasePrice: 250,
+          totalPrice: 285,
+          currency: 'BRL',
+          completedAt: expect.any(Date),
+        }),
+      );
+    });
+
+    it('rejects complete when contract is already COMPLETED', async () => {
+      const { service } = setupCompleteTest({
+        contractStatus: ContractRequestStatus.COMPLETED,
+      });
+
+      await expect(
+        service.complete({ authUserId: 'auth-company' }, 'contract-1'),
+      ).rejects.toThrow('Esta contratação já foi concluída');
+    });
+
+    it('rejects complete when contract is not ACCEPTED', async () => {
+      const { service } = setupCompleteTest({
+        contractStatus: ContractRequestStatus.PENDING_ACCEPTANCE,
+      });
+
+      await expect(
+        service.complete({ authUserId: 'auth-company' }, 'contract-1'),
+      ).rejects.toThrow(
+        `Não é possível concluir uma contratação com status ${ContractRequestStatus.PENDING_ACCEPTANCE}`,
+      );
+    });
+
+    it('rejects complete when user is not the company owner', async () => {
+      const { service } = setupCompleteTest({
+        contractCompanyUserId: 'another-company',
+      });
+
+      await expect(
+        service.complete({ authUserId: 'auth-company' }, 'contract-1'),
+      ).rejects.toThrow('Você não pode concluir contratação de outra empresa');
+    });
+
+    it('rejects complete when user is a creator', async () => {
+      const { service } = setupCompleteTest({
+        actorRole: UserRole.CREATOR,
+      });
+
+      await expect(
+        service.complete({ authUserId: 'auth-company' }, 'contract-1'),
+      ).rejects.toThrow('Apenas empresas podem concluir contratações');
+    });
+
+    it('rejects complete when work has not ended yet', async () => {
+      const futureDate = new Date();
+      futureDate.setHours(futureDate.getHours() + 5);
+
+      const { service } = setupCompleteTest({
+        startsAt: futureDate,
+        durationMinutes: 120,
+      });
+
+      await expect(
+        service.complete({ authUserId: 'auth-company' }, 'contract-1'),
+      ).rejects.toThrow(
+        'Não é possível concluir uma contratação cujo horário de término ainda não passou',
+      );
+    });
+
+    it('does not emit event when complete fails', async () => {
+      const { service, mocks } = setupCompleteTest({
+        contractStatus: ContractRequestStatus.PENDING_ACCEPTANCE,
+      });
+
+      await expect(
+        service.complete({ authUserId: 'auth-company' }, 'contract-1'),
+      ).rejects.toThrow();
+
+      expect(mocks.eventEmitter.emit).not.toHaveBeenCalled();
+    });
   });
 });

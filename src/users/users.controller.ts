@@ -19,6 +19,7 @@ export class UsersController {
       user.authUserId,
       user.email ?? '',
       dto.role,
+      dto.referralCode,
     );
   }
 }

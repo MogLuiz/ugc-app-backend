@@ -189,6 +189,9 @@ export class ContractRequest {
   })
   creatorAvatarUrlSnapshot: string | null;
 
+  @Column({ name: 'completed_at', type: 'timestamptz', nullable: true })
+  completedAt: Date | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

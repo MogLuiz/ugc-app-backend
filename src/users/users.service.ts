@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from './entities/user.entity';
@@ -9,9 +9,12 @@ import { UserRole } from '../common/enums/user-role.enum';
 import { UsersRepository } from './users.repository';
 import { Portfolio } from '../portfolio/entities/portfolio.entity';
 import { PortfolioMedia } from '../portfolio/entities/portfolio-media.entity';
+import { ReferralsService } from '../referrals/services/referrals.service';
 
 @Injectable()
 export class UsersService {
+  private readonly logger = new Logger(UsersService.name);
+
   constructor(
     private usersRepository: UsersRepository,
     @InjectRepository(Profile)
@@ -24,9 +27,10 @@ export class UsersService {
     private portfolioRepo: Repository<Portfolio>,
     @InjectRepository(PortfolioMedia)
     private portfolioMediaRepo: Repository<PortfolioMedia>,
+    private readonly referralsService: ReferralsService,
   ) {}
 
-  async bootstrap(authUserId: string, email: string, role: UserRole) {
+  async bootstrap(authUserId: string, email: string, role: UserRole, referralCode?: string) {
     const existing = await this.usersRepository.findByAuthUserIdWithProfiles(authUserId);
     if (existing) {
       return this.buildPayload(existing);
@@ -57,6 +61,17 @@ export class UsersService {
       user: { id: user.id },
     });
     await this.portfolioRepo.save(portfolio);
+
+    if (referralCode) {
+      try {
+        await this.referralsService.claimReferral(referralCode, user.id);
+      } catch (error) {
+        this.logger.error(
+          `Unexpected error claiming referral: ${(error as Error).message}`,
+          (error as Error).stack,
+        );
+      }
+    }
 
     const userWithProfiles = await this.usersRepository.findByAuthUserIdWithProfiles(authUserId);
     if (!userWithProfiles) throw new Error('User not found after bootstrap');

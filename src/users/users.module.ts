@@ -10,11 +10,13 @@ import { UsersController } from './users.controller';
 import { AuthModule } from '../auth/auth.module';
 import { Portfolio } from '../portfolio/entities/portfolio.entity';
 import { PortfolioMedia } from '../portfolio/entities/portfolio-media.entity';
+import { ReferralsModule } from '../referrals/referrals.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([User, Profile, CreatorProfile, CompanyProfile, Portfolio, PortfolioMedia]),
     AuthModule,
+    ReferralsModule,
   ],
   controllers: [UsersController],
   providers: [UsersRepository, UsersService],

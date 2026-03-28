@@ -80,4 +80,9 @@ export class ContractRequestsController {
   async cancel(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.contractRequestsService.cancel(user, id);
   }
+
+  @Patch(':id/complete')
+  async complete(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.contractRequestsService.complete(user, id);
+  }
 }

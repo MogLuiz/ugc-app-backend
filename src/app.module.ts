@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ConfigModule } from './config/config.module';
 import { DatabaseModule } from './database/database.module';
 import { AuthModule } from './auth/auth.module';
@@ -14,11 +15,13 @@ import { CreatorJobTypesModule } from './creator-job-types/creator-job-types.mod
 import { ContractRequestsModule } from './contract-requests/contract-requests.module';
 import { ConversationsModule } from './conversations/conversations.module';
 import { CreatorModule } from './creator/creator.module';
+import { ReferralsModule } from './referrals/referrals.module';
 
 @Module({
   imports: [
     ConfigModule,
     DatabaseModule,
+    EventEmitterModule.forRoot(),
     AuthModule,
     UsersModule,
     ProfilesModule,
@@ -30,6 +33,7 @@ import { CreatorModule } from './creator/creator.module';
     ContractRequestsModule,
     ConversationsModule,
     CreatorModule,
+    ReferralsModule,
     UploadsModule,
     HealthModule,
   ],

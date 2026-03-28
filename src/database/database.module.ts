@@ -16,6 +16,10 @@ import { PlatformSetting } from '../platform-settings/entities/platform-setting.
 import { Conversation } from '../conversations/entities/conversation.entity';
 import { ConversationParticipant } from '../conversations/entities/conversation-participant.entity';
 import { Message } from '../conversations/entities/message.entity';
+import { PartnerProfile } from '../referrals/entities/partner-profile.entity';
+import { ReferralCode } from '../referrals/entities/referral-code.entity';
+import { Referral } from '../referrals/entities/referral.entity';
+import { Commission } from '../referrals/entities/commission.entity';
 
 @Module({
   imports: [
@@ -42,6 +46,10 @@ import { Message } from '../conversations/entities/message.entity';
               Conversation,
               ConversationParticipant,
               Message,
+              PartnerProfile,
+              ReferralCode,
+              Referral,
+              Commission,
             ],
             synchronize: false,
             logging: configService.get<string>('NODE_ENV') === 'development',
@@ -73,6 +81,10 @@ import { Message } from '../conversations/entities/message.entity';
             Conversation,
             ConversationParticipant,
             Message,
+            PartnerProfile,
+            ReferralCode,
+            Referral,
+            Commission,
           ],
           synchronize: false,
           logging: configService.get<string>('NODE_ENV') === 'development',

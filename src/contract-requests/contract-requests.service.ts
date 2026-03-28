@@ -1,11 +1,13 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { DataSource, EntityManager, Repository } from 'typeorm';
 import { AuthUser } from '../common/interfaces/auth-user.interface';
 import { User } from '../users/entities/user.entity';
@@ -32,6 +34,10 @@ import {
 import { RejectContractRequestDto } from './dto/reject-contract-request.dto';
 import { ContractRequest } from './entities/contract-request.entity';
 import { ConversationsService } from '../conversations/conversations.service';
+import {
+  CONTRACT_REQUEST_COMPLETED_EVENT,
+  ContractRequestCompletedEvent,
+} from './events/contract-request-completed.event';
 
 type PreparedContractRequest = {
   companyUser: User;
@@ -83,6 +89,7 @@ export class ContractRequestsService {
     private readonly pricingService: PricingService,
     private readonly schedulingConflictService: SchedulingConflictService,
     private readonly conversationsService: ConversationsService,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
   async preview(user: AuthUser, dto: PreviewContractRequestDto) {
@@ -282,6 +289,60 @@ export class ContractRequestsService {
       const updated = await this.contractRequestsRepository.save(contractRequest, manager);
       return this.buildPayload(updated);
     });
+  }
+
+  async complete(user: AuthUser, contractRequestId: string) {
+    const { payload, event } = await this.dataSource.transaction(async (manager) => {
+      const actor = await this.findActorForUpdate(user.authUserId, manager);
+      const contractRequest = await this.getContractRequestForUpdate(contractRequestId, manager);
+
+      this.ensureCompanyOwnsContractRequest(actor, contractRequest);
+
+      if (contractRequest.status === ContractRequestStatus.COMPLETED) {
+        throw new ConflictException(
+          'Esta contratação já foi concluída',
+        );
+      }
+
+      if (contractRequest.status !== ContractRequestStatus.ACCEPTED) {
+        throw new ConflictException(
+          `Não é possível concluir uma contratação com status ${contractRequest.status}`,
+        );
+      }
+
+      const endsAt = this.calculateEndDate(
+        contractRequest.startsAt,
+        contractRequest.durationMinutes,
+      );
+      if (endsAt > new Date()) {
+        throw new BadRequestException(
+          'Não é possível concluir uma contratação cujo horário de término ainda não passou',
+        );
+      }
+
+      const completedAt = new Date();
+      contractRequest.status = ContractRequestStatus.COMPLETED;
+      contractRequest.completedAt = completedAt;
+
+      const updated = await this.contractRequestsRepository.save(contractRequest, manager);
+
+      return {
+        payload: this.buildPayload(updated),
+        event: {
+          contractRequestId: updated.id,
+          creatorUserId: updated.creatorUserId,
+          companyUserId: updated.companyUserId,
+          creatorBasePrice: updated.creatorBasePrice,
+          totalPrice: updated.totalPrice,
+          currency: updated.currency,
+          completedAt,
+        } satisfies ContractRequestCompletedEvent,
+      };
+    });
+
+    this.eventEmitter.emit(CONTRACT_REQUEST_COMPLETED_EVENT, event);
+
+    return payload;
   }
 
   private async prepareContractRequest(
@@ -503,6 +564,14 @@ export class ContractRequestsService {
     }
   }
 
+  private ensureCompanyOwnsContractRequest(actor: User, contractRequest: ContractRequest): void {
+    this.ensureRole(actor, UserRole.COMPANY, 'Apenas empresas podem concluir contratações');
+
+    if (actor.id !== contractRequest.companyUserId) {
+      throw new ForbiddenException('Você não pode concluir contratação de outra empresa');
+    }
+  }
+
   private ensurePendingAcceptance(
     contractRequest: ContractRequest,
     action: 'aceitar' | 'rejeitar',
@@ -552,6 +621,7 @@ export class ContractRequestsService {
       creatorNameSnapshot: contractRequest.creatorNameSnapshot,
       creatorAvatarUrlSnapshot: contractRequest.creatorAvatarUrlSnapshot,
       rejectionReason: contractRequest.rejectionReason,
+      completedAt: contractRequest.completedAt?.toISOString() ?? null,
       createdAt: contractRequest.createdAt?.toISOString(),
       updatedAt: contractRequest.updatedAt?.toISOString(),
     };
