@@ -16,6 +16,7 @@ import { PreviewContractRequestDto } from './dto/preview-contract-request.dto';
 import { CreateContractRequestDto } from './dto/create-contract-request.dto';
 import { ListCompanyContractRequestsDto } from './dto/list-company-contract-requests.dto';
 import { RejectContractRequestDto } from './dto/reject-contract-request.dto';
+import { ContractRequestStatus } from '../common/enums/contract-request-status.enum';
 
 @Controller('contract-requests')
 @UseGuards(SupabaseAuthGuard)
@@ -51,6 +52,14 @@ export class ContractRequestsController {
   @Get('my-creator/pending')
   async listMyCreatorPending(@CurrentUser() user: AuthUser) {
     return this.contractRequestsService.listMyCreatorPending(user);
+  }
+
+  @Get('my-creator')
+  async listMyCreator(
+    @CurrentUser() user: AuthUser,
+    @Query('status') status: ContractRequestStatus,
+  ) {
+    return this.contractRequestsService.listMyCreator(user, status);
   }
 
   @Patch(':id/accept')

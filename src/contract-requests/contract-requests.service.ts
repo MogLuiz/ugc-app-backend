@@ -173,6 +173,21 @@ export class ContractRequestsService {
     return items.map((item) => this.buildCompanyCampaignPayload(item));
   }
 
+  async listMyCreator(user: AuthUser, status: ContractRequestStatus) {
+    const creatorUser = await this.requireAuthenticatedUser(user.authUserId);
+    this.ensureRole(
+      creatorUser,
+      UserRole.CREATOR,
+      'Apenas creators podem listar contratações',
+    );
+
+    const items = await this.contractRequestsRepository.listByCreatorStatus(
+      creatorUser.id,
+      status,
+    );
+    return items.map((item) => this.buildCreatorOfferPayload(item));
+  }
+
   async listMyCreatorPending(user: AuthUser) {
     const creatorUser = await this.requireAuthenticatedUser(user.authUserId);
     this.ensureRole(

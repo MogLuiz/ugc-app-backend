@@ -192,6 +192,22 @@ export class ContractRequestsRepository {
     return qb.getMany();
   }
 
+  async listByCreatorStatus(
+    creatorUserId: string,
+    status: ContractRequestStatus,
+  ): Promise<ContractRequest[]> {
+    return this.repo
+      .createQueryBuilder('contractRequest')
+      .leftJoinAndSelect('contractRequest.jobType', 'jobType')
+      .leftJoinAndSelect('contractRequest.companyUser', 'companyUser')
+      .leftJoinAndSelect('companyUser.profile', 'companyUserProfile')
+      .leftJoinAndSelect('companyUser.companyProfile', 'companyUserCompanyProfile')
+      .where('contractRequest.creator_user_id = :creatorUserId', { creatorUserId })
+      .andWhere('contractRequest.status = :status', { status })
+      .orderBy('contractRequest.startsAt', 'DESC')
+      .getMany();
+  }
+
   async save(
     contractRequest: ContractRequest,
     manager?: EntityManager,
