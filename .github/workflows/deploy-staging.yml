@@ -1,0 +1,29 @@
+name: Deploy — Staging
+
+on:
+  push:
+    branches: [develop]
+
+jobs:
+  migrate:
+    name: Run migrations (staging)
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - run: npm ci
+
+      - name: Run migrations
+        run: npm run migration:run
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL_STAGING }}
+          NODE_ENV: production
+
+  # Backend deploy: Railway auto-deploia após o CI passar (Wait for CI habilitado)
