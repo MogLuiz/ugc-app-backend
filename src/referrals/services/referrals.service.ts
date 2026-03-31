@@ -269,8 +269,8 @@ export class ReferralsService {
   }
 
   private buildReferralLink(code: string): string {
-    const appUrl = this.configService.get<string>('APP_URL') ?? 'https://app.example.com';
-    return `${appUrl}/auth/register?ref=${code}`;
+    const appUrl = this.configService.get<string>('APP_URL') ?? 'https://ugclocal.com.br';
+    return `${appUrl}/cadastro?ref=${code}`;
   }
 
   private async requireUser(authUserId: string) {

@@ -76,7 +76,7 @@ describe('ReferralsService', () => {
 
     const configService = {
       get: jest.fn().mockImplementation((key: string) => {
-        if (key === 'APP_URL') return 'https://app.example.com';
+        if (key === 'APP_URL') return 'https://ugclocal.com.br';
         return undefined;
       }),
     };
@@ -118,7 +118,7 @@ describe('ReferralsService', () => {
       expect(result.userId).toBe('user-1');
       expect(result.status).toBe(PartnerStatus.ACTIVE);
       expect(result.referralCode).toBe('abc12345');
-      expect(result.referralLink).toBe('https://app.example.com/auth/register?ref=abc12345');
+      expect(result.referralLink).toBe('https://ugclocal.com.br/cadastro?ref=abc12345');
       expect(result.commissionRatePercent).toBe(10);
       expect(mocks.partnerProfilesRepository.createAndSave).toHaveBeenCalledTimes(1);
       expect(mocks.referralCodeGeneratorService.generateUniqueCode).toHaveBeenCalledTimes(1);
@@ -175,7 +175,7 @@ describe('ReferralsService', () => {
 
       expect(result.userId).toBe('user-1');
       expect(result.referralCode).toBe('abc12345');
-      expect(result.referralLink).toBe('https://app.example.com/auth/register?ref=abc12345');
+      expect(result.referralLink).toBe('https://ugclocal.com.br/cadastro?ref=abc12345');
     });
 
     it('throws NotFoundException when partner profile not found', async () => {
@@ -198,7 +198,7 @@ describe('ReferralsService', () => {
       const result = await service.getMyReferralCode({ authUserId: 'auth-user-1' });
 
       expect(result.code).toBe('abc12345');
-      expect(result.link).toBe('https://app.example.com/auth/register?ref=abc12345');
+      expect(result.link).toBe('https://ugclocal.com.br/cadastro?ref=abc12345');
     });
 
     it('throws NotFoundException when no active code exists', async () => {

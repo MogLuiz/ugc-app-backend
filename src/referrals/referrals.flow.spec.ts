@@ -161,7 +161,7 @@ function buildService() {
 
   const configService = {
     get: jest.fn().mockImplementation((key: string) => {
-      if (key === 'APP_URL') return 'https://app.example.com';
+      if (key === 'APP_URL') return 'https://ugclocal.com.br';
       return undefined;
     }),
   };
