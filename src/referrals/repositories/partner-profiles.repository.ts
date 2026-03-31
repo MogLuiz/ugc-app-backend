@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, Repository } from 'typeorm';
 import { PartnerProfile } from '../entities/partner-profile.entity';
+import { PartnerStatus } from '../enums/partner-status.enum';
 
 @Injectable()
 export class PartnerProfilesRepository {
@@ -24,5 +25,14 @@ export class PartnerProfilesRepository {
   ): Promise<PartnerProfile> {
     const repository = this.repository(manager);
     return repository.save(repository.create(data));
+  }
+
+  async updateStatus(
+    userId: string,
+    status: PartnerStatus,
+    manager?: EntityManager,
+  ): Promise<void> {
+    const repository = this.repository(manager);
+    await repository.update({ userId }, { status });
   }
 }

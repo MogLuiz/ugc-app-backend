@@ -31,4 +31,13 @@ export class ReferralCodesRepository {
     const repository = this.repository(manager);
     return repository.save(repository.create(data));
   }
+
+  /** Desativa todos os códigos do parceiro (mesmo que haja mais de um registro). */
+  async deactivateAllForPartnerUserId(
+    partnerUserId: string,
+    manager?: EntityManager,
+  ): Promise<void> {
+    const repository = this.repository(manager);
+    await repository.update({ partnerUserId }, { isActive: false });
+  }
 }

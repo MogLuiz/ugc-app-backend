@@ -37,8 +37,14 @@ export class ReferralsService {
     private readonly referralCodeGeneratorService: ReferralCodeGeneratorService,
   ) {}
 
-  async activatePartner(authUser: AuthUser) {
-    const user = await this.requireUser(authUser.authUserId);
+  /**
+   * Ativação de parceiro por `users.id` — uso interno via POST /internal/partners/:userId/activate.
+   */
+  async activatePartnerByUserId(userId: string) {
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException('Usuário não encontrado');
+    }
 
     const existing = await this.partnerProfilesRepository.findByUserId(user.id);
     if (existing) {
@@ -68,10 +74,45 @@ export class ReferralsService {
         manager,
       );
 
-      this.logger.log(`Partner activated: userId=${user.id}, code=${referralCode.code}`);
+      this.logger.log(`Partner activated (internal): userId=${user.id}, code=${referralCode.code}`);
 
       return this.buildActivateResponse(partnerProfile, referralCode.code);
     });
+  }
+
+  /**
+   * Desativa parceiro (status SUSPENDED + códigos inativos). Uso interno via POST /internal/partners/:userId/deactivate.
+   */
+  async deactivatePartnerByUserId(userId: string) {
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException('Usuário não encontrado');
+    }
+
+    const profile = await this.partnerProfilesRepository.findByUserId(userId);
+    if (!profile) {
+      throw new NotFoundException('Parceiro não encontrado para este usuário');
+    }
+
+    const previousActiveCode = await this.referralCodesRepository.findActiveByPartnerUserId(userId);
+    const deactivatedAt = new Date();
+
+    await this.dataSource.transaction(async (manager) => {
+      await this.partnerProfilesRepository.updateStatus(userId, PartnerStatus.SUSPENDED, manager);
+      await this.referralCodesRepository.deactivateAllForPartnerUserId(userId, manager);
+    });
+
+    const codeForResponse = previousActiveCode?.code ?? null;
+
+    return {
+      userId,
+      partnerStatus: PartnerStatus.SUSPENDED,
+      deactivatedAt: deactivatedAt.toISOString(),
+      referralCode:
+        codeForResponse != null
+          ? { code: codeForResponse, isActive: false }
+          : null,
+    };
   }
 
   async getMyPartnerProfile(authUser: AuthUser) {

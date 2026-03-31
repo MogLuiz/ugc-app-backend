@@ -10,7 +10,13 @@ describe('ReferralsService', () => {
     const user = { id: 'user-1', authUserId: 'auth-user-1' };
 
     const userRepo = {
-      findOne: jest.fn().mockResolvedValue(user),
+      findOne: jest.fn().mockImplementation(
+        async ({ where }: { where: { authUserId?: string; id?: string } }) => {
+          if (where.id === 'user-1') return user;
+          if (where.authUserId === 'auth-user-1') return user;
+          return null;
+        },
+      ),
     };
 
     const partnerProfilesRepository = {
@@ -20,6 +26,7 @@ describe('ReferralsService', () => {
         createdAt: new Date('2026-03-28T10:00:00Z'),
         updatedAt: new Date('2026-03-28T10:00:00Z'),
       })),
+      updateStatus: jest.fn().mockResolvedValue(undefined),
     };
 
     const referralCodesRepository = {
@@ -30,6 +37,7 @@ describe('ReferralsService', () => {
         ...data,
         createdAt: new Date('2026-03-28T10:00:00Z'),
       })),
+      deactivateAllForPartnerUserId: jest.fn().mockResolvedValue(undefined),
     };
 
     const referralsRepository = {
@@ -109,11 +117,11 @@ describe('ReferralsService', () => {
     };
   }
 
-  describe('activatePartner()', () => {
+  describe('activatePartnerByUserId()', () => {
     it('creates partner profile and referral code for new partner', async () => {
       const { service, mocks } = createService();
 
-      const result = await service.activatePartner({ authUserId: 'auth-user-1' });
+      const result = await service.activatePartnerByUserId('user-1');
 
       expect(result.userId).toBe('user-1');
       expect(result.status).toBe(PartnerStatus.ACTIVE);
@@ -140,7 +148,7 @@ describe('ReferralsService', () => {
         createdAt: new Date('2026-03-20T10:00:00Z'),
       });
 
-      const result = await service.activatePartner({ authUserId: 'auth-user-1' });
+      const result = await service.activatePartnerByUserId('user-1');
 
       expect(result.referralCode).toBe('existing1');
       expect(mocks.partnerProfilesRepository.createAndSave).not.toHaveBeenCalled();
@@ -151,7 +159,41 @@ describe('ReferralsService', () => {
       const { service, mocks } = createService();
       mocks.userRepo.findOne.mockResolvedValue(null);
 
-      await expect(service.activatePartner({ authUserId: 'unknown' })).rejects.toThrow(NotFoundException);
+      await expect(service.activatePartnerByUserId('unknown-uuid')).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('deactivatePartnerByUserId()', () => {
+    it('sets partner SUSPENDED and deactivates referral codes', async () => {
+      const { service, mocks } = createService();
+      mocks.partnerProfilesRepository.findByUserId.mockResolvedValue({
+        userId: 'user-1',
+        status: PartnerStatus.ACTIVE,
+        commissionRatePercent: 10,
+        activatedAt: new Date('2026-03-20T10:00:00Z'),
+      });
+      mocks.referralCodesRepository.findActiveByPartnerUserId.mockResolvedValue({
+        code: 'abc12345',
+        isActive: true,
+      });
+
+      const result = await service.deactivatePartnerByUserId('user-1');
+
+      expect(result.partnerStatus).toBe(PartnerStatus.SUSPENDED);
+      expect(result.referralCode).toEqual({ code: 'abc12345', isActive: false });
+      expect(result.userId).toBe('user-1');
+      expect(mocks.partnerProfilesRepository.updateStatus).toHaveBeenCalledWith(
+        'user-1',
+        PartnerStatus.SUSPENDED,
+        expect.anything(),
+      );
+      expect(mocks.referralCodesRepository.deactivateAllForPartnerUserId).toHaveBeenCalled();
+    });
+
+    it('throws when partner profile missing', async () => {
+      const { service } = createService();
+
+      await expect(service.deactivatePartnerByUserId('user-1')).rejects.toThrow(NotFoundException);
     });
   });
 

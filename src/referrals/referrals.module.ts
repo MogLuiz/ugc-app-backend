@@ -13,6 +13,8 @@ import { ReferralCodeGeneratorService } from './services/referral-code-generator
 import { ReferralsService } from './services/referrals.service';
 import { CommissionsService } from './services/commissions.service';
 import { PartnersController } from './controllers/partners.controller';
+import { InternalPartnersController } from './controllers/internal-partners.controller';
+import { InternalPartnerApiKeyGuard } from './guards/internal-partner-api-key.guard';
 import { PartnerGuard } from './guards/partner.guard';
 import { ContractCompletedListener } from './listeners/contract-completed.listener';
 
@@ -20,8 +22,9 @@ import { ContractCompletedListener } from './listeners/contract-completed.listen
   imports: [
     TypeOrmModule.forFeature([User, PartnerProfile, ReferralCode, Referral, Commission]),
   ],
-  controllers: [PartnersController],
+  controllers: [PartnersController, InternalPartnersController],
   providers: [
+    InternalPartnerApiKeyGuard,
     PartnerProfilesRepository,
     ReferralCodesRepository,
     ReferralsRepository,

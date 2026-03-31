@@ -52,10 +52,13 @@ function buildService() {
 
   // ── userRepo ────────────────────────────────────────────────────────────────
   const userRepo = {
-    findOne: jest.fn().mockImplementation(async ({ where }: { where: { authUserId?: string } }) => {
-      if (where.authUserId === PARTNER_AUTH_ID) return { id: PARTNER_USER_ID, authUserId: PARTNER_AUTH_ID };
-      return null;
-    }),
+    findOne: jest.fn().mockImplementation(
+      async ({ where }: { where: { authUserId?: string; id?: string } }) => {
+        if (where.authUserId === PARTNER_AUTH_ID) return { id: PARTNER_USER_ID, authUserId: PARTNER_AUTH_ID };
+        if (where.id === PARTNER_USER_ID) return { id: PARTNER_USER_ID, authUserId: PARTNER_AUTH_ID };
+        return null;
+      },
+    ),
   };
 
   // ── partnerProfilesRepository ───────────────────────────────────────────────
@@ -66,6 +69,9 @@ function buildService() {
     createAndSave: jest.fn().mockImplementation(async (data) => {
       partnerProfile = { ...data, createdAt: new Date(), updatedAt: new Date() };
       return partnerProfile;
+    }),
+    updateStatus: jest.fn().mockImplementation(async (_userId: string, status: PartnerStatus) => {
+      if (partnerProfile) partnerProfile.status = status;
     }),
   };
 
@@ -82,6 +88,9 @@ function buildService() {
     createAndSave: jest.fn().mockImplementation(async (data) => {
       referralCodeRecord = { id: REFERRAL_CODE_ID, ...data, createdAt: new Date() };
       return referralCodeRecord;
+    }),
+    deactivateAllForPartnerUserId: jest.fn().mockImplementation(async () => {
+      if (referralCodeRecord) referralCodeRecord.isActive = false;
     }),
   };
 
@@ -193,7 +202,7 @@ describe('Referrals — full flow', () => {
     const partnerAuth = { authUserId: PARTNER_AUTH_ID };
 
     // Step 1: Partner activates
-    const activation = await service.activatePartner(partnerAuth);
+    const activation = await service.activatePartnerByUserId(PARTNER_USER_ID);
     expect(activation.referralCode).toBe(REFERRAL_CODE);
     expect(activation.status).toBe(PartnerStatus.ACTIVE);
     expect(state.partnerProfile).not.toBeNull();
@@ -229,7 +238,7 @@ describe('Referrals — full flow', () => {
   it('idempotency: processing the same completed event twice creates only one commission', async () => {
     const { service, state, mocks } = buildService();
 
-    await service.activatePartner({ authUserId: PARTNER_AUTH_ID });
+    await service.activatePartnerByUserId(PARTNER_USER_ID);
     await service.claimReferral(REFERRAL_CODE, CREATOR_USER_ID);
 
     // First event
@@ -246,7 +255,7 @@ describe('Referrals — full flow', () => {
   it('second contract for same creator → no new commission (first-touch only)', async () => {
     const { service, mocks } = buildService();
 
-    await service.activatePartner({ authUserId: PARTNER_AUTH_ID });
+    await service.activatePartnerByUserId(PARTNER_USER_ID);
     await service.claimReferral(REFERRAL_CODE, CREATOR_USER_ID);
 
     // First completed contract qualifies the referral
@@ -267,12 +276,11 @@ describe('Referrals — full flow', () => {
     expect(mocks.commissionsService.createCommission).not.toHaveBeenCalled();
   });
 
-  it('activatePartner is idempotent: second call returns same code without creating a new one', async () => {
+  it('activatePartnerByUserId is idempotent: second call returns same code without creating a new one', async () => {
     const { service, mocks } = buildService();
-    const partnerAuth = { authUserId: PARTNER_AUTH_ID };
 
-    const first = await service.activatePartner(partnerAuth);
-    const second = await service.activatePartner(partnerAuth);
+    const first = await service.activatePartnerByUserId(PARTNER_USER_ID);
+    const second = await service.activatePartnerByUserId(PARTNER_USER_ID);
 
     expect(second.referralCode).toBe(first.referralCode);
     expect(mocks.partnerProfilesRepository.createAndSave).toHaveBeenCalledTimes(1);
@@ -290,7 +298,7 @@ describe('Referrals — full flow', () => {
   it('claimReferral self-referral → blocked, no referral created', async () => {
     const { service, mocks } = buildService();
 
-    await service.activatePartner({ authUserId: PARTNER_AUTH_ID });
+    await service.activatePartnerByUserId(PARTNER_USER_ID);
     // Partner tries to use their own code
     await service.claimReferral(REFERRAL_CODE, PARTNER_USER_ID);
 
@@ -300,7 +308,7 @@ describe('Referrals — full flow', () => {
   it('double claim with same referralCode → only first referral created', async () => {
     const { service, mocks } = buildService();
 
-    await service.activatePartner({ authUserId: PARTNER_AUTH_ID });
+    await service.activatePartnerByUserId(PARTNER_USER_ID);
     await service.claimReferral(REFERRAL_CODE, CREATOR_USER_ID);
     expect(mocks.referralsRepository.createReferral).toHaveBeenCalledTimes(1);
 

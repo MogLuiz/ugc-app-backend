@@ -1,7 +1,6 @@
 import {
   Controller,
   Get,
-  Post,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -17,11 +16,6 @@ import { ListCommissionsQueryDto } from '../dto/list-commissions-query.dto';
 @UseGuards(SupabaseAuthGuard)
 export class PartnersController {
   constructor(private readonly referralsService: ReferralsService) {}
-
-  @Post('me/activate')
-  async activate(@CurrentUser() user: AuthUser) {
-    return this.referralsService.activatePartner(user);
-  }
 
   @Get('me')
   @UseGuards(PartnerGuard)
