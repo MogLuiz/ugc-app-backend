@@ -10,6 +10,11 @@ import { UsersRepository } from './users.repository';
 import { Portfolio } from '../portfolio/entities/portfolio.entity';
 import { PortfolioMedia } from '../portfolio/entities/portfolio-media.entity';
 import { ReferralsService } from '../referrals/services/referrals.service';
+import { normalizeEmail } from '../common/utils/normalize-email';
+
+function isUniqueViolation(err: unknown): boolean {
+  return (err as { code?: string })?.code === '23505';
+}
 
 @Injectable()
 export class UsersService {
@@ -30,23 +35,47 @@ export class UsersService {
     private readonly referralsService: ReferralsService,
   ) {}
 
-  async bootstrap(authUserId: string, email: string, role: UserRole, referralCode?: string) {
-    const existing = await this.usersRepository.findByAuthUserIdWithProfiles(authUserId);
-    if (existing) {
-      return this.buildPayload(existing);
+  async bootstrap(authUserId: string, rawEmail: string, role: UserRole, referralCode?: string) {
+    const email = normalizeEmail(rawEmail || `${authUserId}@unknown`);
+
+    // Step 1: idempotent — return existing user if already bootstrapped with this authUserId
+    const existingByAuthId = await this.usersRepository.findByAuthUserIdWithProfiles(authUserId);
+    if (existingByAuthId) {
+      return this.buildPayload(existingByAuthId);
     }
 
-    const user = await this.usersRepository.create({
-      authUserId,
-      email: email || `${authUserId}@unknown`,
-      role,
-    });
+    // Step 2: auth identity recovery — same email, different authUserId.
+    // Supabase guarantees email uniqueness across active identities, so this is the same
+    // person whose Supabase auth account was deleted and recreated. Restore the auth link only;
+    // do NOT recreate profiles, portfolio, or overwrite role/status/domain data.
+    const existingByEmail = await this.usersRepository.findByEmail(email);
+    if (existingByEmail) {
+      this.logger.warn(
+        `bootstrap: re-linking authUserId for existing user ${existingByEmail.id} (email: ${email})`,
+      );
+      await this.usersRepository.updateAuthUserId(existingByEmail.id, authUserId);
+      const relinked = await this.usersRepository.findByAuthUserIdWithProfiles(authUserId);
+      if (!relinked) throw new Error('User not found after auth re-link');
+      return this.buildPayload(relinked);
+    }
 
-    const profileName = email?.split('@')[0] || 'Usuário';
-    const profile = this.profileRepo.create({
-      userId: user.id,
-      name: profileName,
-    });
+    // Step 3: create new user, with race-condition fallback on unique violation
+    let user: User;
+    try {
+      user = await this.usersRepository.create({ authUserId, email, role });
+    } catch (err) {
+      if (isUniqueViolation(err)) {
+        // Another concurrent request won the race — return the user it created
+        const raceFallback = await this.usersRepository.findByEmail(email);
+        if (!raceFallback) throw err;
+        this.logger.warn(`bootstrap: race condition resolved for email ${email}`);
+        return this.buildPayload(raceFallback);
+      }
+      throw err;
+    }
+
+    const profileName = email.split('@')[0];
+    const profile = this.profileRepo.create({ userId: user.id, name: profileName });
     await this.profileRepo.save(profile);
 
     if (role === UserRole.CREATOR) {
@@ -57,9 +86,7 @@ export class UsersService {
       await this.companyProfileRepo.save(company);
     }
 
-    const portfolio = this.portfolioRepo.create({
-      user: { id: user.id },
-    });
+    const portfolio = this.portfolioRepo.create({ user: { id: user.id } });
     await this.portfolioRepo.save(portfolio);
 
     if (referralCode) {

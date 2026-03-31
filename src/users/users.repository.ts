@@ -5,6 +5,7 @@ import { User } from './entities/user.entity';
 import { UserRole } from '../common/enums/user-role.enum';
 import type { MarketplaceSortBy } from '../profiles/dto/list-marketplace-creators.dto';
 import { AGE_YEARS_SQL } from './marketplace-creator-age-sql';
+import { normalizeEmail } from '../common/utils/normalize-email';
 
 function mapRawAgeYears(value: string | number | null | undefined): number | null {
   if (value == null) return null;
@@ -69,14 +70,24 @@ export class UsersRepository {
     });
   }
 
+  async findByEmail(email: string): Promise<User | null> {
+    return this.repo.findOne({ where: { email: normalizeEmail(email) } });
+  }
+
   async create(data: {
     authUserId: string;
     email: string;
     role: UserRole;
     phone?: string;
   }): Promise<User> {
-    const user = this.repo.create(data);
+    const user = this.repo.create({ ...data, email: normalizeEmail(data.email) });
     return this.repo.save(user);
+  }
+
+  async updateAuthUserId(userId: string, newAuthUserId: string): Promise<void> {
+    // authUserId has a UNIQUE constraint in the DB.
+    // If newAuthUserId already belongs to another user, the DB will reject this — do not mask.
+    await this.repo.update(userId, { authUserId: newAuthUserId });
   }
 
   async updatePhone(userId: string, phone: string | null): Promise<void> {
