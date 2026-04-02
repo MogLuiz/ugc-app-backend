@@ -87,7 +87,12 @@ export class UsersService {
     }
 
     const portfolio = this.portfolioRepo.create({ user: { id: user.id } });
-    await this.portfolioRepo.save(portfolio);
+    try {
+      await this.portfolioRepo.save(portfolio);
+    } catch (err) {
+      if (!isUniqueViolation(err)) throw err;
+      this.logger.warn(`bootstrap: portfolio already exists for user ${user.id}, skipping`);
+    }
 
     if (referralCode) {
       try {
