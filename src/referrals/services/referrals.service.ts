@@ -189,12 +189,24 @@ export class ReferralsService {
       return;
     }
 
-    await this.referralsRepository.createReferral({
-      partnerUserId: codeRecord.partnerUserId,
-      referredUserId,
-      referralCodeId: codeRecord.id,
-      status: ReferralStatus.PENDING,
-    });
+    try {
+      await this.referralsRepository.createReferral({
+        partnerUserId: codeRecord.partnerUserId,
+        referredUserId,
+        referralCodeId: codeRecord.id,
+        status: ReferralStatus.PENDING,
+      });
+    } catch (err) {
+      if ((err as { code?: string })?.code === '23505') {
+        // Corrida: outro request criou o referral entre findByReferredUserId e createReferral.
+        // A indicação foi registrada — comportamento correto. Não é erro.
+        this.logger.warn(
+          `Referral claim race condition for userId ${referredUserId}, code ${referralCode}: already claimed concurrently`,
+        );
+        return;
+      }
+      throw err;
+    }
 
     this.logger.log(
       `Referral claimed: userId ${referredUserId} via code ${referralCode}, partnerId ${codeRecord.partnerUserId}`,

@@ -1,4 +1,4 @@
-import { IsEnum, IsOptional, IsString } from 'class-validator';
+import { IsEnum, IsOptional, IsString, MaxLength } from 'class-validator';
 import { UserRole } from '../../common/enums/user-role.enum';
 
 export class BootstrapUserDto {
@@ -8,4 +8,9 @@ export class BootstrapUserDto {
   @IsOptional()
   @IsString()
   referralCode?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  name?: string;
 }
