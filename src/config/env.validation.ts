@@ -134,6 +134,26 @@ export class EnvValidation {
   @IsNumber()
   @Min(0)
   MIN_TRANSPORT_PRICE: number = 20;
+
+  @IsOptional()
+  @IsString()
+  SENTRY_DSN: string = '';
+
+  @IsOptional()
+  @IsString()
+  SENTRY_ENABLED: string = '';
+
+  @IsOptional()
+  @IsString()
+  SENTRY_ENVIRONMENT: string = '';
+
+  @IsOptional()
+  @IsString()
+  SENTRY_RELEASE: string = '';
+
+  @IsOptional()
+  @IsString()
+  RAILWAY_GIT_COMMIT_SHA: string = '';
 }
 
 export function validateEnv(config: Record<string, unknown>): EnvValidation {

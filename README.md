@@ -13,7 +13,7 @@ API REST em **NestJS** que centraliza regras de negócio, persistência em **Pos
 | Auth | Validação de JWT **Supabase** (`@supabase/supabase-js`) |
 | Eventos | **@nestjs/event-emitter** |
 | Testes | **Jest** |
-| Observabilidade | **Sentry** (`@sentry/node`, opcional) |
+| Observabilidade | **Sentry** (`@sentry/nestjs`, opcional) |
 
 Detalhes: [`.specs/codebase/STACK.md`](./.specs/codebase/STACK.md).
 
@@ -54,7 +54,20 @@ DATABASE_URL=... SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... npm run seed:sta
 
 ## Variáveis de ambiente
 
-Principais: `PORT`, `NODE_ENV`, `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `FRONTEND_URL`, limites de upload (`MAX_AVATAR_SIZE_MB`, `ALLOWED_AVATAR_MIME_TYPES`), `SENTRY_DSN` (opcional). Ver `.env.example`.
+Principais: `PORT`, `NODE_ENV`, `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `FRONTEND_URL`, limites de upload (`MAX_AVATAR_SIZE_MB`, `ALLOWED_AVATAR_MIME_TYPES`). Ver `.env.example`.
+
+### Sentry
+
+| Variável | Descrição |
+|----------|-----------|
+| `SENTRY_ENABLED` | Se `false`, o SDK não envia eventos (útil para desligar sem remover DSN). |
+| `SENTRY_DSN` | DSN do projeto no Sentry. |
+| `SENTRY_ENVIRONMENT` | Nome do ambiente no Sentry (ex.: `production`, `staging`). Se vazio, usa `NODE_ENV`. |
+| `SENTRY_RELEASE` | Identificador de release (ex.: versão do deploy). Opcional. |
+
+Na **Railway**, a plataforma injeta automaticamente `RAILWAY_GIT_COMMIT_SHA`. O backend usa esse valor como fallback de `release` quando `SENTRY_RELEASE` não está definido (ver `src/instrument.ts`).
+
+**Validação rápida (local):** com `NODE_ENV=development`, `SENTRY_DSN` e `SENTRY_ENABLED` ativos, chame `GET /health/__sentry_smoke` e confira a issue no Sentry (stack, método, rota, tag `role` e usuário `id` se a requisição for autenticada). Erros HTTP 4xx esperados não viram issue; 5xx e erros não tratados sim. Transações cujo nome contém `/health` não são enviadas (menos ruído de healthcheck). Em `NODE_ENV=test` o Sentry fica desligado por padrão.
 
 ## Autenticação
 

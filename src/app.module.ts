@@ -1,5 +1,8 @@
 import { Module } from '@nestjs/common';
+import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
+import { SentryGlobalFilter, SentryModule } from '@sentry/nestjs/setup';
 import { EventEmitterModule } from '@nestjs/event-emitter';
+import { SentryUserContextInterceptor } from './common/interceptors/sentry-user-context.interceptor';
 import { ConfigModule } from './config/config.module';
 import { DatabaseModule } from './database/database.module';
 import { AuthModule } from './auth/auth.module';
@@ -20,6 +23,7 @@ import { OpenOffersModule } from './open-offers/open-offers.module';
 
 @Module({
   imports: [
+    SentryModule.forRoot(),
     ConfigModule,
     DatabaseModule,
     EventEmitterModule.forRoot(),
@@ -38,6 +42,10 @@ import { OpenOffersModule } from './open-offers/open-offers.module';
     OpenOffersModule,
     UploadsModule,
     HealthModule,
+  ],
+  providers: [
+    { provide: APP_FILTER, useClass: SentryGlobalFilter },
+    { provide: APP_INTERCEPTOR, useClass: SentryUserContextInterceptor },
   ],
 })
 export class AppModule {}

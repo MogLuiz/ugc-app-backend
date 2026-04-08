@@ -1,4 +1,4 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, NotFoundException } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 
@@ -26,5 +26,14 @@ export class HealthController {
         database: dbStatus,
       },
     };
+  }
+
+  /** Somente desenvolvimento: dispara erro real para validar o Sentry. Em outros ambientes retorna 404. */
+  @Get('__sentry_smoke')
+  sentrySmoke() {
+    if (process.env.NODE_ENV !== 'development') {
+      throw new NotFoundException();
+    }
+    throw new Error('Sentry smoke test');
   }
 }
