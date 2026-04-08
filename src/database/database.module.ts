@@ -20,6 +20,8 @@ import { PartnerProfile } from '../referrals/entities/partner-profile.entity';
 import { ReferralCode } from '../referrals/entities/referral-code.entity';
 import { Referral } from '../referrals/entities/referral.entity';
 import { Commission } from '../referrals/entities/commission.entity';
+import { OpenOffer } from '../open-offers/entities/open-offer.entity';
+import { OpenOfferApplication } from '../open-offers/entities/open-offer-application.entity';
 
 @Module({
   imports: [
@@ -50,6 +52,8 @@ import { Commission } from '../referrals/entities/commission.entity';
               ReferralCode,
               Referral,
               Commission,
+              OpenOffer,
+              OpenOfferApplication,
             ],
             synchronize: false,
             logging: configService.get<string>('NODE_ENV') === 'development',
@@ -85,6 +89,8 @@ import { Commission } from '../referrals/entities/commission.entity';
             ReferralCode,
             Referral,
             Commission,
+            OpenOffer,
+            OpenOfferApplication,
           ],
           synchronize: false,
           logging: configService.get<string>('NODE_ENV') === 'development',

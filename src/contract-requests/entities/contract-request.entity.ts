@@ -192,6 +192,19 @@ export class ContractRequest {
   @Column({ name: 'completed_at', type: 'timestamptz', nullable: true })
   completedAt: Date | null;
 
+  @Column({
+    name: 'platform_fee_rate_snapshot',
+    type: 'decimal',
+    precision: 5,
+    scale: 4,
+    nullable: true,
+    transformer: decimalTransformer,
+  })
+  platformFeeRateSnapshot: number | null;
+
+  @Column({ name: 'open_offer_id', type: 'uuid', nullable: true })
+  openOfferId: string | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

@@ -16,6 +16,7 @@ import { ContractRequestsModule } from './contract-requests/contract-requests.mo
 import { ConversationsModule } from './conversations/conversations.module';
 import { CreatorModule } from './creator/creator.module';
 import { ReferralsModule } from './referrals/referrals.module';
+import { OpenOffersModule } from './open-offers/open-offers.module';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { ReferralsModule } from './referrals/referrals.module';
     ConversationsModule,
     CreatorModule,
     ReferralsModule,
+    OpenOffersModule,
     UploadsModule,
     HealthModule,
   ],

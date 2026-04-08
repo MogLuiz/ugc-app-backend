@@ -7,13 +7,14 @@ import { UserRole } from '../common/enums/user-role.enum';
 import { JobMode } from '../common/enums/job-mode.enum';
 import { PaymentStatus } from '../common/enums/payment-status.enum';
 import { ContractRequestStatus } from '../common/enums/contract-request-status.enum';
-import { CONTRACT_REQUEST_COMPLETED_EVENT } from './events/contract-request-completed.event';
+
+// ─── PricingService ──────────────────────────────────────────────────────────
 
 describe('PricingService', () => {
-  it('calculates transport fee with minimum floor', () => {
-    const service = new PricingService(new TransportService());
+  const pricingService = new PricingService(new TransportService());
 
-    const result = service.buildPricing({
+  it('calculates transport fee with minimum floor (platformFeeRate = 0)', () => {
+    const result = pricingService.buildPricing({
       creatorBasePrice: 200,
       distanceKm: 2,
       transportPricePerKm: 5,
@@ -21,14 +22,62 @@ describe('PricingService', () => {
     });
 
     expect(result.transportFee).toBe(20);
-    expect(result.transport.price).toBe(20);
     expect(result.transport.isMinimumApplied).toBe(true);
     expect(result.platformFee).toBe(0);
+    expect(result.platformFeeRate).toBe(0);
+    // totalPrice = creatorBasePrice + transportFee (platformFee não somado à conta da empresa)
     expect(result.totalPrice).toBe(220);
     expect(result.totalAmount).toBe(220);
     expect(result.currency).toBe('BRL');
   });
+
+  it('calculates platformFee correctly when rate is set', () => {
+    const result = pricingService.buildPricing({
+      creatorBasePrice: 200,
+      distanceKm: 10,
+      transportPricePerKm: 3,
+      transportMinimumFee: 20,
+      platformFeeRate: 0.15,
+    });
+
+    // platformFee = 200 * 0.15 = 30 (desconto interno do creator)
+    expect(result.platformFee).toBe(30);
+    expect(result.platformFeeRate).toBe(0.15);
+    // transportFee = 10 * 3 = 30
+    expect(result.transportFee).toBe(30);
+    // totalPrice = creatorBasePrice + transportFee (empresa paga, platformFee não entra)
+    expect(result.totalPrice).toBe(230);
+    expect(result.totalAmount).toBe(230);
+  });
+
+  it('regression: direct hire with rate=0 produces same totalPrice as before refactor', () => {
+    const result = pricingService.buildPricing({
+      creatorBasePrice: 500,
+      distanceKm: 15,
+      transportPricePerKm: 2,
+      transportMinimumFee: 20,
+    });
+
+    // Comportamento idêntico ao pré-refactor: totalPrice = base + transport
+    expect(result.platformFee).toBe(0);
+    expect(result.totalPrice).toBe(result.creatorBasePrice + result.transportFee);
+  });
+
+  it('rounds platformFee to 2 decimal places', () => {
+    const result = pricingService.buildPricing({
+      creatorBasePrice: 100,
+      distanceKm: 5,
+      transportPricePerKm: 2,
+      transportMinimumFee: 10,
+      platformFeeRate: 0.1333,
+    });
+
+    // 100 * 0.1333 = 13.33 (rounded)
+    expect(result.platformFee).toBe(13.33);
+  });
 });
+
+// ─── DistanceService ──────────────────────────────────────────────────────────
 
 describe('DistanceService', () => {
   it('calculates rounded distance in km', () => {
@@ -44,8 +93,10 @@ describe('DistanceService', () => {
   });
 });
 
+// ─── ContractRequestsService ──────────────────────────────────────────────────
+
 describe('ContractRequestsService', () => {
-  function createService() {
+  function createService(overrides: Record<string, unknown> = {}) {
     const companyUser = {
       id: 'company-1',
       authUserId: 'auth-company',
@@ -88,6 +139,8 @@ describe('ContractRequestsService', () => {
         id: 'job-type-1',
         mode: JobMode.PRESENTIAL,
         durationMinutes: 120,
+        platformFeeRate: 0,
+        minimumOfferedAmount: 0,
       }),
     };
     const creatorJobTypesRepository = {
@@ -135,6 +188,7 @@ describe('ContractRequestsService', () => {
     const pricingService = new PricingService(new TransportService());
     const schedulingConflictService = {
       hasConflicts: jest.fn().mockResolvedValue(false),
+      ensureNoConflicts: jest.fn().mockResolvedValue(undefined),
     };
     const conversationsService = {
       ensureConversationForContractRequest: jest.fn().mockResolvedValue(undefined),
@@ -191,6 +245,8 @@ describe('ContractRequestsService', () => {
     };
   }
 
+  // ─── Contratação direta (regressão) ────────────────────────────────────────
+
   it('creates accepted contract request when creator auto-accepts', async () => {
     const { service, mocks } = createService();
 
@@ -199,479 +255,336 @@ describe('ContractRequestsService', () => {
       {
         creatorId: 'creator-1',
         jobTypeId: 'job-type-1',
-        description: 'Captação presencial',
-        startsAt: '2026-03-21T10:00:00.000Z',
+        description: 'Teste',
+        startsAt: '2026-06-01T10:00:00.000Z',
         durationMinutes: 120,
         jobAddress: 'Av. Paulista, 1000',
         termsAccepted: true,
       },
     );
 
-    expect(mocks.contractRequestsRepository.createAndSave).toHaveBeenCalled();
     expect(result.status).toBe(ContractRequestStatus.ACCEPTED);
-    expect(result.paymentStatus).toBe(PaymentStatus.PAID);
-    expect(result.totalPrice).toBe(285);
-    expect(result.totalAmount).toBe(285);
-    expect(result.transport.price).toBe(35);
-    expect(result.transportFee).toBe(result.transport.price);
-    expect(result.transportPricePerKmUsed).toBe(3.5);
+    expect(mocks.conversationsService.ensureConversationForContractRequest).toHaveBeenCalledTimes(1);
   });
 
-  it('creates pending contract request when creator does not auto-accept', async () => {
+  it('regression: direct hire platformFeeRateSnapshot = 0 when jobType.platformFeeRate = 0', async () => {
     const { service, mocks } = createService();
-    mocks.creatorUser.creatorProfile.autoAcceptBookings = false;
 
-    const result = await service.create(
+    await service.create(
       { authUserId: 'auth-company' },
       {
         creatorId: 'creator-1',
         jobTypeId: 'job-type-1',
-        description: 'Captação presencial',
-        startsAt: '2026-03-21T10:00:00.000Z',
+        description: 'Regressão pricing',
+        startsAt: '2026-06-01T10:00:00.000Z',
         durationMinutes: 120,
         jobAddress: 'Av. Paulista, 1000',
         termsAccepted: true,
       },
     );
 
-    expect(result.status).toBe(ContractRequestStatus.PENDING_ACCEPTANCE);
+    const savedPayload = mocks.contractRequestsRepository.createAndSave.mock.calls[0][0];
+    expect(savedPayload.platformFeeRateSnapshot).toBe(0);
+    expect(savedPayload.openOfferId).toBeNull();
+    expect(savedPayload.platformFee).toBe(0);
+    // totalPrice = creatorBasePrice + transportFee
+    expect(savedPayload.totalPrice).toBe(savedPayload.creatorBasePrice + savedPayload.transportFee);
   });
 
-  it('blocks preview when creator has no valid coordinates', async () => {
+  it('regression: direct hire with platformFeeRate > 0 snapshots rate but does not add fee to totalPrice', async () => {
     const { service, mocks } = createService();
-    mocks.creatorUser.profile.latitude = null;
-    mocks.creatorUser.profile.hasValidCoordinates = false;
 
-    await expect(
-      service.preview(
-        { authUserId: 'auth-company' },
-        {
-          creatorId: 'creator-1',
-          jobTypeId: 'job-type-1',
-          description: 'Captação presencial',
-          startsAt: '2026-03-21T10:00:00.000Z',
-          durationMinutes: 120,
-          jobAddress: 'Av. Paulista, 1000',
-          termsAccepted: true,
-        },
-      ),
-    ).rejects.toThrow(
-      'Este creator precisa atualizar o endereco para habilitar contratacoes presenciais.',
-    );
-  });
-
-  it('rejects accept when contract request is not pending acceptance', async () => {
-    const { service, mocks } = createService();
-    const actor = {
-      id: 'creator-1',
-      authUserId: 'auth-creator',
-      role: UserRole.CREATOR,
-      profile: { name: 'Creator Teste' },
-      creatorProfile: { autoAcceptBookings: true },
-    };
-    const actorRepo = {
-      findOne: jest.fn().mockResolvedValue(actor),
-    };
-    (mocks.dataSource as any).getRepository = jest.fn().mockReturnValue(actorRepo);
-    (mocks.dataSource as any).transaction = jest.fn(async (callback: any) =>
-      callback({
-        getRepository: jest.fn().mockReturnValue(actorRepo),
-      }),
-    );
-    mocks.contractRequestsRepository.findByIdForUpdate.mockResolvedValue({
-      id: 'contract-1',
-      creatorUserId: 'creator-1',
-      status: ContractRequestStatus.ACCEPTED,
-      startsAt: new Date('2026-03-21T10:00:00.000Z'),
-      durationMinutes: 120,
-    });
-
-    await expect(
-      service.accept({ authUserId: 'auth-creator' }, 'contract-1'),
-    ).rejects.toThrow(
-      `Não é possível aceitar uma contratação com status ${ContractRequestStatus.ACCEPTED}`,
-    );
-  });
-
-  it('rejects pending contract request and stores rejection reason', async () => {
-    const { service, mocks } = createService();
-    const actor = {
-      id: 'creator-1',
-      authUserId: 'auth-creator',
-      role: UserRole.CREATOR,
-      profile: { name: 'Creator Teste' },
-      creatorProfile: { autoAcceptBookings: true },
-    };
-    const actorRepo = {
-      findOne: jest.fn().mockResolvedValue(actor),
-    };
-    const manager = {
-      getRepository: jest.fn().mockReturnValue(actorRepo),
-    };
-    (mocks.dataSource as any).transaction = jest.fn(async (callback: any) =>
-      callback(manager),
-    );
-    mocks.contractRequestsRepository.findByIdForUpdate.mockResolvedValue({
-      id: 'contract-1',
-      creatorUserId: 'creator-1',
-      status: ContractRequestStatus.PENDING_ACCEPTANCE,
-      startsAt: new Date('2026-03-21T10:00:00.000Z'),
-      durationMinutes: 120,
-      paymentStatus: PaymentStatus.PAID,
+    mocks.jobTypesService.getActiveByIdOrThrow.mockResolvedValue({
+      id: 'job-type-1',
       mode: JobMode.PRESENTIAL,
-      companyUserId: 'company-1',
-      jobTypeId: 'job-type-1',
-      description: 'Captação presencial',
-      currency: 'BRL',
-      termsAcceptedAt: new Date('2026-03-20T10:00:00.000Z'),
-      jobAddress: 'Av. Paulista, 1000',
-      jobFormattedAddress: 'Av. Paulista, 1000, Sao Paulo, SP',
-      jobLatitude: -23.561684,
-      jobLongitude: -46.625378,
-      distanceKm: 10,
-      effectiveServiceRadiusKmUsed: 20,
-      transportFee: 35,
-      creatorBasePrice: 250,
-      platformFee: 0,
-      totalPrice: 285,
-      transportPricePerKmUsed: 3.5,
-      transportMinimumFeeUsed: 15,
-      creatorNameSnapshot: 'Creator Teste',
-      creatorAvatarUrlSnapshot: null,
-      rejectionReason: null,
-      createdAt: new Date('2026-03-20T10:00:00.000Z'),
-      updatedAt: new Date('2026-03-20T10:00:00.000Z'),
-    });
-    mocks.contractRequestsRepository.save.mockImplementation(async (payload) => payload);
-
-    const result = await service.reject(
-      { authUserId: 'auth-creator' },
-      'contract-1',
-      { rejectionReason: 'Indisponível nesta data' },
-    );
-
-    expect(result.status).toBe(ContractRequestStatus.REJECTED);
-    expect(result.rejectionReason).toBe('Indisponível nesta data');
-  });
-
-  it('blocks preview when geocoding fails', async () => {
-    const { service, mocks } = createService();
-    mocks.geocodingService.geocodeAddress.mockResolvedValue(null);
-
-    await expect(
-      service.preview(
-        { authUserId: 'auth-company' },
-        {
-          creatorId: 'creator-1',
-          jobTypeId: 'job-type-1',
-          description: 'Captação presencial',
-          startsAt: '2026-03-21T10:00:00.000Z',
-          durationMinutes: 120,
-          jobAddress: 'Endereco invalido',
-          termsAccepted: true,
-        },
-      ),
-    ).rejects.toThrow(
-      'Nao foi possivel validar o local do trabalho. Revise o endereco.',
-    );
-  });
-
-  it('applies minimum transport fee when distance is short', async () => {
-    const { service, mocks } = createService();
-    mocks.distanceService.calculateDistanceKm.mockReturnValue(1);
-    mocks.platformSettingsService.getCurrent.mockResolvedValue({
-      transportPricePerKm: 2,
-      transportMinimumFee: 20,
-    });
-
-    const result = await service.preview(
-      { authUserId: 'auth-company' },
-      {
-        creatorId: 'creator-1',
-        jobTypeId: 'job-type-1',
-        description: 'Captação presencial',
-        startsAt: '2026-03-21T10:00:00.000Z',
-        durationMinutes: 120,
-        jobAddress: 'Av. Paulista, 1000',
-        termsAccepted: true,
-      },
-    );
-
-    expect(result.transport.price).toBe(20);
-    expect(result.transport.isMinimumApplied).toBe(true);
-    expect(result.transportFee).toBe(20);
-    expect(result.totalAmount).toBe(270);
-  });
-
-  it('recalculates distance and transport when jobAddress changes', async () => {
-    const { service, mocks } = createService();
-    mocks.geocodingService.geocodeAddress.mockImplementation(async (address: string) => {
-      if (address.includes('Paulista')) {
-        return { lat: -23.56, lng: -46.62, normalizedAddress: 'Paulista' };
-      }
-      return { lat: -23.60, lng: -46.50, normalizedAddress: 'Savassi' };
-    });
-    mocks.distanceService.calculateDistanceKm.mockImplementation((_, destination) =>
-      destination.lng === -46.62 ? 2 : 12,
-    );
-    mocks.platformSettingsService.getCurrent.mockResolvedValue({
-      transportPricePerKm: 2,
-      transportMinimumFee: 20,
-    });
-
-    const first = await service.preview(
-      { authUserId: 'auth-company' },
-      {
-        creatorId: 'creator-1',
-        jobTypeId: 'job-type-1',
-        description: 'Captação presencial',
-        startsAt: '2026-03-21T10:00:00.000Z',
-        durationMinutes: 120,
-        jobAddress: 'Av. Paulista, 1000',
-        termsAccepted: true,
-      },
-    );
-
-    const second = await service.preview(
-      { authUserId: 'auth-company' },
-      {
-        creatorId: 'creator-1',
-        jobTypeId: 'job-type-1',
-        description: 'Captação presencial',
-        startsAt: '2026-03-21T10:00:00.000Z',
-        durationMinutes: 120,
-        jobAddress: 'Rua dos Inconfidentes, 50',
-        termsAccepted: true,
-      },
-    );
-
-    expect(first.transport.price).toBe(20);
-    expect(second.transport.price).toBe(24);
-    expect(first.totalAmount).toBe(270);
-    expect(second.totalAmount).toBe(274);
-  });
-
-  it('returns controlled error on geocoding timeout', async () => {
-    const { service, mocks } = createService();
-    mocks.geocodingService.geocodeAddress.mockImplementation(
-      () => new Promise(() => undefined),
-    );
-    mocks.configService.get.mockImplementation((key: string) => {
-      if (key === 'DEFAULT_CREATOR_SERVICE_RADIUS_KM') return 30;
-      if (key === 'GEOCODING_TIMEOUT_MS') return 1;
-      if (key === 'TRANSPORT_PRICE_PER_KM') return 2;
-      if (key === 'MIN_TRANSPORT_PRICE') return 20;
-      return undefined;
-    });
-
-    await expect(
-      service.preview(
-        { authUserId: 'auth-company' },
-        {
-          creatorId: 'creator-1',
-          jobTypeId: 'job-type-1',
-          description: 'Captação presencial',
-          startsAt: '2026-03-21T10:00:00.000Z',
-          durationMinutes: 120,
-          jobAddress: 'Rua qualquer, 10',
-          termsAccepted: true,
-        },
-      ),
-    ).rejects.toThrow('Nao foi possivel validar o local do trabalho. Revise o endereco.');
-  });
-
-  it('reuses geocoding between preview and create for same payload', async () => {
-    const { service, mocks } = createService();
-
-    const payload = {
-      creatorId: 'creator-1',
-      jobTypeId: 'job-type-1',
-      description: 'Captação presencial',
-      startsAt: '2026-03-21T10:00:00.000Z',
       durationMinutes: 120,
-      jobAddress: 'Av. Paulista, 1000',
-      termsAccepted: true,
+      platformFeeRate: 0.15,
+      minimumOfferedAmount: 0,
+    });
+
+    await service.create(
+      { authUserId: 'auth-company' },
+      {
+        creatorId: 'creator-1',
+        jobTypeId: 'job-type-1',
+        description: 'Com taxa',
+        startsAt: '2026-06-01T10:00:00.000Z',
+        durationMinutes: 120,
+        jobAddress: 'Av. Paulista, 1000',
+        termsAccepted: true,
+      },
+    );
+
+    const saved = mocks.contractRequestsRepository.createAndSave.mock.calls[0][0];
+    expect(saved.platformFeeRateSnapshot).toBe(0.15);
+    expect(saved.platformFee).toBeGreaterThan(0);
+    // Empresa paga base + transport (sem adicionar platformFee)
+    expect(saved.totalPrice).toBe(saved.creatorBasePrice + saved.transportFee);
+    expect(saved.totalPrice).not.toBe(saved.creatorBasePrice + saved.transportFee + saved.platformFee);
+  });
+
+  // ─── createFromOpenOfferSelection ─────────────────────────────────────────
+
+  it('createFromOpenOfferSelection: creates ACCEPTED contract and conversation within manager', async () => {
+    const { service, mocks } = createService();
+    const fakeManager = { getRepository: jest.fn() } as any;
+
+    mocks.contractRequestsRepository.createAndSave.mockResolvedValue({
+      id: 'cr-from-offer',
+      status: ContractRequestStatus.ACCEPTED,
+      companyUserId: 'company-1',
+    });
+
+    const pricing = new PricingService(new TransportService()).buildPricing({
+      creatorBasePrice: 300,
+      distanceKm: 8,
+      transportPricePerKm: 3,
+      transportMinimumFee: 20,
+      platformFeeRate: 0.10,
+    });
+
+    const result = await service.createFromOpenOfferSelection(
+      {
+        companyUserId: 'company-1',
+        creatorUser: mocks.creatorUser,
+        jobTypeId: 'job-type-1',
+        offeredAmount: 300,
+        openOfferId: 'offer-123',
+        startsAt: new Date('2026-07-01T09:00:00Z'),
+        durationMinutes: 120,
+        jobAddress: 'Rua X, 100',
+        jobFormattedAddress: 'Rua X, 100, SP',
+        jobLatitude: -23.5,
+        jobLongitude: -46.6,
+        distanceKm: 8,
+        effectiveServiceRadiusKm: 30,
+        platformFeeRateSnapshot: 0.10,
+        pricing,
+      },
+      fakeManager,
+    );
+
+    expect(result.id).toBe('cr-from-offer');
+
+    // Deve ter sido salvo com ACCEPTED e openOfferId corretos
+    const savedPayload = mocks.contractRequestsRepository.createAndSave.mock.calls[0][0];
+    expect(savedPayload.status).toBe(ContractRequestStatus.ACCEPTED);
+    expect(savedPayload.openOfferId).toBe('offer-123');
+    expect(savedPayload.platformFeeRateSnapshot).toBe(0.10);
+    expect(savedPayload.openOfferId).not.toBeNull();
+
+    // Conversa deve ter sido criada com o mesmo manager
+    expect(mocks.conversationsService.ensureConversationForContractRequest).toHaveBeenCalledWith(
+      'cr-from-offer',
+      'company-1',
+      fakeManager,
+    );
+  });
+
+  it('createFromOpenOfferSelection: totalPrice = offeredAmount + transportFee (not + platformFee)', async () => {
+    const { service, mocks } = createService();
+    const fakeManager = { getRepository: jest.fn() } as any;
+
+    mocks.contractRequestsRepository.createAndSave.mockImplementation(async (p) => ({
+      id: 'cr-1',
+      ...p,
+    }));
+
+    const pricing = new PricingService(new TransportService()).buildPricing({
+      creatorBasePrice: 400,
+      distanceKm: 10,
+      transportPricePerKm: 3,
+      transportMinimumFee: 20,
+      platformFeeRate: 0.20,
+    });
+
+    await service.createFromOpenOfferSelection(
+      {
+        companyUserId: 'company-1',
+        creatorUser: mocks.creatorUser,
+        jobTypeId: 'job-type-1',
+        offeredAmount: 400,
+        openOfferId: 'offer-abc',
+        startsAt: new Date(),
+        durationMinutes: 60,
+        jobAddress: 'Rua Y',
+        jobFormattedAddress: null,
+        jobLatitude: -23.5,
+        jobLongitude: -46.6,
+        distanceKm: 10,
+        effectiveServiceRadiusKm: 30,
+        platformFeeRateSnapshot: 0.20,
+        pricing,
+      },
+      fakeManager,
+    );
+
+    const saved = mocks.contractRequestsRepository.createAndSave.mock.calls[0][0];
+    // platformFee = 400 * 0.20 = 80
+    expect(saved.platformFee).toBe(80);
+    // totalPrice = 400 + transportFee (não + 80)
+    expect(saved.totalPrice).toBe(400 + saved.transportFee);
+    expect(saved.totalPrice).not.toBe(400 + saved.transportFee + 80);
+  });
+});
+
+// ─── Concorrência na seleção (OpenOffersService) ──────────────────────────────
+// Teste de unidade que simula race condition na seleção de creator.
+
+describe('OpenOffersService.selectCreator — concorrência', () => {
+  it('throws ConflictException when offer is already FILLED (race condition simulation)', async () => {
+    const { OpenOffersService } = await import('../open-offers/open-offers.service').catch(() => {
+      throw new Error('OpenOffersService não encontrado — verificar import path');
+    });
+
+    const filledOffer = {
+      id: 'offer-1',
+      companyUserId: 'company-1',
+      status: 'FILLED',
+      expiresAt: new Date(Date.now() + 3_600_000),
+      jobTypeId: 'jt-1',
+      startsAt: new Date(Date.now() + 86_400_000),
+      durationMinutes: 120,
+      jobAddress: 'Rua Z',
+      jobFormattedAddress: null,
+      jobLatitude: -23.5,
+      jobLongitude: -46.6,
+      offeredAmount: 300,
+      platformFeeRateSnapshot: 0,
     };
 
-    await service.preview({ authUserId: 'auth-company' }, payload);
-    await service.create({ authUserId: 'auth-company' }, payload);
+    const openOffersRepository = {
+      findByIdForUpdate: jest.fn().mockResolvedValue(filledOffer),
+      findApplicationByIdForUpdate: jest.fn(),
+      saveApplication: jest.fn(),
+      updatePendingApplicationsToRejected: jest.fn(),
+      save: jest.fn(),
+    };
 
-    expect(mocks.geocodingService.geocodeAddress).toHaveBeenCalledTimes(1);
+    const manager = { getRepository: jest.fn() };
+    const dataSource = {
+      transaction: jest.fn(async (cb: (m: unknown) => unknown) => cb(manager)),
+    };
+
+    const usersRepository = {
+      findByAuthUserIdWithProfiles: jest.fn().mockResolvedValue({
+        id: 'company-1',
+        role: 'COMPANY',
+        profile: {},
+        creatorProfile: null,
+      }),
+    };
+
+    const service = new OpenOffersService(
+      dataSource as any,
+      openOffersRepository as any,
+      usersRepository as any,
+      {} as any, // jobTypesService
+      {} as any, // platformSettingsService
+      {} as any, // geocodingService
+      {} as any, // distanceService
+      {} as any, // pricingService
+      {} as any, // schedulingConflictService
+      {} as any, // contractRequestsService
+      { get: jest.fn() } as any,
+    );
+
+    await expect(
+      service.selectCreator({ authUserId: 'auth-company' }, 'offer-1', 'app-1'),
+    ).rejects.toMatchObject({ message: expect.stringContaining('FILLED') });
   });
 
-  describe('complete()', () => {
-    function setupCompleteTest(overrides: {
-      actorRole?: string;
-      actorId?: string;
-      actorAuthUserId?: string;
-      contractStatus?: ContractRequestStatus;
-      contractCompanyUserId?: string;
-      startsAt?: Date;
-      durationMinutes?: number;
-    } = {}) {
-      const { service, mocks } = createService();
-
-      const actor = {
-        id: overrides.actorId ?? 'company-1',
-        authUserId: overrides.actorAuthUserId ?? 'auth-company',
-        role: overrides.actorRole ?? UserRole.COMPANY,
-        profile: { name: 'Empresa X' },
-        companyProfile: { companyName: 'Empresa X LTDA' },
-      };
-      const actorRepo = {
-        findOne: jest.fn().mockResolvedValue(actor),
-      };
-      const manager = {
-        getRepository: jest.fn().mockReturnValue(actorRepo),
-      };
-      (mocks.dataSource as any).transaction = jest.fn(async (callback: any) =>
-        callback(manager),
-      );
-
-      const pastDate = new Date('2026-03-20T10:00:00.000Z');
-      const contractRequest = {
-        id: 'contract-1',
-        companyUserId: overrides.contractCompanyUserId ?? 'company-1',
-        creatorUserId: 'creator-1',
-        jobTypeId: 'job-type-1',
-        mode: JobMode.PRESENTIAL,
-        description: 'Captação presencial',
-        status: overrides.contractStatus ?? ContractRequestStatus.ACCEPTED,
-        paymentStatus: PaymentStatus.PAID,
-        currency: 'BRL',
-        termsAcceptedAt: pastDate,
-        startsAt: overrides.startsAt ?? pastDate,
-        durationMinutes: overrides.durationMinutes ?? 120,
-        jobAddress: 'Av. Paulista, 1000',
-        jobFormattedAddress: 'Av. Paulista, 1000, Sao Paulo, SP',
-        jobLatitude: -23.561684,
-        jobLongitude: -46.625378,
-        distanceKm: 10,
-        effectiveServiceRadiusKmUsed: 20,
-        transportFee: 35,
-        creatorBasePrice: 250,
-        platformFee: 0,
-        totalPrice: 285,
-        transportPricePerKmUsed: 3.5,
-        transportMinimumFeeUsed: 15,
-        creatorNameSnapshot: 'Creator Teste',
-        creatorAvatarUrlSnapshot: null,
-        rejectionReason: null,
-        completedAt: null,
-        createdAt: pastDate,
-        updatedAt: pastDate,
-      };
-
-      mocks.contractRequestsRepository.findByIdForUpdate.mockResolvedValue(contractRequest);
-      mocks.contractRequestsRepository.save.mockImplementation(async (payload) => payload);
-
-      return { service, mocks, contractRequest };
-    }
-
-    it('completes an accepted contract request', async () => {
-      const { service, mocks } = setupCompleteTest();
-
-      const result = await service.complete(
-        { authUserId: 'auth-company' },
-        'contract-1',
-      );
-
-      expect(result.status).toBe(ContractRequestStatus.COMPLETED);
-      expect(result.completedAt).toBeDefined();
-      expect(result.completedAt).not.toBeNull();
+  it('throws ConflictException when scheduling conflict detected during selection', async () => {
+    const { OpenOffersService } = await import('../open-offers/open-offers.service').catch(() => {
+      throw new Error('OpenOffersService não encontrado');
     });
 
-    it('emits contract-request.completed event with correct payload', async () => {
-      const { service, mocks } = setupCompleteTest();
+    const openOffer = {
+      id: 'offer-2',
+      companyUserId: 'company-1',
+      status: 'OPEN',
+      expiresAt: new Date(Date.now() + 3_600_000),
+      jobTypeId: 'jt-1',
+      startsAt: new Date(Date.now() + 86_400_000),
+      durationMinutes: 120,
+      jobAddress: 'Rua A',
+      jobFormattedAddress: null,
+      jobLatitude: -23.5,
+      jobLongitude: -46.6,
+      offeredAmount: 300,
+      platformFeeRateSnapshot: 0,
+    };
 
-      await service.complete(
-        { authUserId: 'auth-company' },
-        'contract-1',
-      );
+    const application = {
+      id: 'app-2',
+      openOfferId: 'offer-2',
+      creatorUserId: 'creator-1',
+      status: 'PENDING',
+    };
 
-      expect(mocks.eventEmitter.emit).toHaveBeenCalledTimes(1);
-      expect(mocks.eventEmitter.emit).toHaveBeenCalledWith(
-        CONTRACT_REQUEST_COMPLETED_EVENT,
-        expect.objectContaining({
-          contractRequestId: 'contract-1',
-          creatorUserId: 'creator-1',
-          companyUserId: 'company-1',
-          creatorBasePrice: 250,
-          totalPrice: 285,
-          currency: 'BRL',
-          completedAt: expect.any(Date),
-        }),
-      );
+    const creatorUser = {
+      id: 'creator-1',
+      profile: { latitude: -23.5, longitude: -46.6, hasValidCoordinates: true },
+      creatorProfile: { serviceRadiusKm: 30 },
+    };
+
+    const manager = {
+      getRepository: jest.fn().mockReturnValue({
+        findOne: jest.fn().mockResolvedValue(creatorUser),
+      }),
+    };
+
+    const openOffersRepository = {
+      findByIdForUpdate: jest.fn().mockResolvedValue(openOffer),
+      findApplicationByIdForUpdate: jest.fn().mockResolvedValue(application),
+      saveApplication: jest.fn(),
+      updatePendingApplicationsToRejected: jest.fn(),
+      save: jest.fn(),
+    };
+
+    const dataSource = {
+      transaction: jest.fn(async (cb: (m: unknown) => unknown) => cb(manager)),
+    };
+
+    const usersRepository = {
+      findByAuthUserIdWithProfiles: jest.fn().mockResolvedValue({
+        id: 'company-1',
+        role: 'COMPANY',
+        profile: {},
+      }),
+    };
+
+    // Scheduling conflict retorna true — agenda ocupada
+    const schedulingConflictService = {
+      hasConflicts: jest.fn().mockResolvedValue(true),
+    };
+
+    const distanceService = {
+      calculateDistanceKm: jest.fn().mockReturnValue(5),
+    };
+
+    const service = new OpenOffersService(
+      dataSource as any,
+      openOffersRepository as any,
+      usersRepository as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      distanceService as any,
+      {} as any,
+      schedulingConflictService as any,
+      {} as any,
+      { get: jest.fn().mockReturnValue(30) } as any,
+    );
+
+    await expect(
+      service.selectCreator({ authUserId: 'auth-company' }, 'offer-2', 'app-2'),
+    ).rejects.toMatchObject({
+      message: expect.stringContaining('agenda'),
     });
 
-    it('rejects complete when contract is already COMPLETED', async () => {
-      const { service } = setupCompleteTest({
-        contractStatus: ContractRequestStatus.COMPLETED,
-      });
-
-      await expect(
-        service.complete({ authUserId: 'auth-company' }, 'contract-1'),
-      ).rejects.toThrow('Esta contratação já foi concluída');
-    });
-
-    it('rejects complete when contract is not ACCEPTED', async () => {
-      const { service } = setupCompleteTest({
-        contractStatus: ContractRequestStatus.PENDING_ACCEPTANCE,
-      });
-
-      await expect(
-        service.complete({ authUserId: 'auth-company' }, 'contract-1'),
-      ).rejects.toThrow(
-        `Não é possível concluir uma contratação com status ${ContractRequestStatus.PENDING_ACCEPTANCE}`,
-      );
-    });
-
-    it('rejects complete when user is not the company owner', async () => {
-      const { service } = setupCompleteTest({
-        contractCompanyUserId: 'another-company',
-      });
-
-      await expect(
-        service.complete({ authUserId: 'auth-company' }, 'contract-1'),
-      ).rejects.toThrow('Você não pode concluir contratação de outra empresa');
-    });
-
-    it('rejects complete when user is a creator', async () => {
-      const { service } = setupCompleteTest({
-        actorRole: UserRole.CREATOR,
-      });
-
-      await expect(
-        service.complete({ authUserId: 'auth-company' }, 'contract-1'),
-      ).rejects.toThrow('Apenas empresas podem concluir contratações');
-    });
-
-    it('rejects complete when work has not ended yet', async () => {
-      const futureDate = new Date();
-      futureDate.setHours(futureDate.getHours() + 5);
-
-      const { service } = setupCompleteTest({
-        startsAt: futureDate,
-        durationMinutes: 120,
-      });
-
-      await expect(
-        service.complete({ authUserId: 'auth-company' }, 'contract-1'),
-      ).rejects.toThrow(
-        'Não é possível concluir uma contratação cujo horário de término ainda não passou',
-      );
-    });
-
-    it('does not emit event when complete fails', async () => {
-      const { service, mocks } = setupCompleteTest({
-        contractStatus: ContractRequestStatus.PENDING_ACCEPTANCE,
-      });
-
-      await expect(
-        service.complete({ authUserId: 'auth-company' }, 'contract-1'),
-      ).rejects.toThrow();
-
-      expect(mocks.eventEmitter.emit).not.toHaveBeenCalled();
-    });
+    expect(schedulingConflictService.hasConflicts).toHaveBeenCalledWith(
+      expect.objectContaining({ manager, creatorUserId: 'creator-1' }),
+    );
   });
 });

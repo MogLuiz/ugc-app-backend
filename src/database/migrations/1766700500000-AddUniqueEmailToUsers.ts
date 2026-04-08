@@ -20,6 +20,22 @@ export class AddUniqueEmailToUsers1766700500000 implements MigrationInterface {
   name = 'AddUniqueEmailToUsers1766700500000';
 
   async up(queryRunner: QueryRunner): Promise<void> {
+    // Renomeia duplicatas (mantém um registro por email: o mais antigo por created_at, depois id).
+    await queryRunner.query(`
+      WITH ranked AS (
+        SELECT id,
+          ROW_NUMBER() OVER (
+            PARTITION BY email
+            ORDER BY created_at ASC NULLS LAST, id ASC
+          ) AS rn
+        FROM "users"
+      )
+      UPDATE "users" u
+      SET email = split_part(u.email, '@', 1) || '+' || replace(u.id::text, '-', '') || '@' || split_part(u.email, '@', 2)
+      FROM ranked r
+      WHERE u.id = r.id AND r.rn > 1 AND position('@' IN u.email) > 0
+    `);
+
     await queryRunner.query(
       `ALTER TABLE "users" ADD CONSTRAINT "UQ_users_email" UNIQUE ("email")`,
     );

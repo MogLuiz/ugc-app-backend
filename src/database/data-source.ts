@@ -17,6 +17,12 @@ import { CreatePartnerProfiles1766700000000 } from './migrations/1766700000000-C
 import { CreateReferralCodes1766700100000 } from './migrations/1766700100000-CreateReferralCodes';
 import { CreateReferrals1766700200000 } from './migrations/1766700200000-CreateReferrals';
 import { CreateCommissions1766700300000 } from './migrations/1766700300000-CreateCommissions';
+import { NormalizeUserEmails1766700400000 } from './migrations/1766700400000-NormalizeUserEmails';
+import { AddUniqueEmailToUsers1766700500000 } from './migrations/1766700500000-AddUniqueEmailToUsers';
+import { AddOpenOffersTable1766800000000 } from './migrations/1766800000000-AddOpenOffersTable';
+import { AddOpenOfferApplicationsTable1766800100000 } from './migrations/1766800100000-AddOpenOfferApplicationsTable';
+import { AddJobTypePricingConfig1766800200000 } from './migrations/1766800200000-AddJobTypePricingConfig';
+import { AddContractRequestOpenOfferFields1766800300000 } from './migrations/1766800300000-AddContractRequestOpenOfferFields';
 
 config();
 
@@ -46,6 +52,12 @@ export const AppDataSource = new DataSource(
           CreateReferralCodes1766700100000,
           CreateReferrals1766700200000,
           CreateCommissions1766700300000,
+          NormalizeUserEmails1766700400000,
+          AddUniqueEmailToUsers1766700500000,
+          AddOpenOffersTable1766800000000,
+          AddOpenOfferApplicationsTable1766800100000,
+          AddJobTypePricingConfig1766800200000,
+          AddContractRequestOpenOfferFields1766800300000,
         ],
         synchronize: false,
         logging: process.env.NODE_ENV === 'development',
@@ -77,6 +89,12 @@ export const AppDataSource = new DataSource(
           CreateReferralCodes1766700100000,
           CreateReferrals1766700200000,
           CreateCommissions1766700300000,
+          NormalizeUserEmails1766700400000,
+          AddUniqueEmailToUsers1766700500000,
+          AddOpenOffersTable1766800000000,
+          AddOpenOfferApplicationsTable1766800100000,
+          AddJobTypePricingConfig1766800200000,
+          AddContractRequestOpenOfferFields1766800300000,
         ],
         synchronize: false,
         logging: process.env.NODE_ENV === 'development',
