@@ -23,6 +23,7 @@ import { AddOpenOffersTable1766800000000 } from './migrations/1766800000000-AddO
 import { AddOpenOfferApplicationsTable1766800100000 } from './migrations/1766800100000-AddOpenOfferApplicationsTable';
 import { AddJobTypePricingConfig1766800200000 } from './migrations/1766800200000-AddJobTypePricingConfig';
 import { AddContractRequestOpenOfferFields1766800300000 } from './migrations/1766800300000-AddContractRequestOpenOfferFields';
+import { BackfillProfileNameFromAuthMetadata1766900000000 } from './migrations/1766900000000-BackfillProfileNameFromAuthMetadata';
 
 config();
 
@@ -58,6 +59,7 @@ export const AppDataSource = new DataSource(
           AddOpenOfferApplicationsTable1766800100000,
           AddJobTypePricingConfig1766800200000,
           AddContractRequestOpenOfferFields1766800300000,
+          BackfillProfileNameFromAuthMetadata1766900000000,
         ],
         synchronize: false,
         logging: process.env.NODE_ENV === 'development',
@@ -95,6 +97,7 @@ export const AppDataSource = new DataSource(
           AddOpenOfferApplicationsTable1766800100000,
           AddJobTypePricingConfig1766800200000,
           AddContractRequestOpenOfferFields1766800300000,
+          BackfillProfileNameFromAuthMetadata1766900000000,
         ],
         synchronize: false,
         logging: process.env.NODE_ENV === 'development',

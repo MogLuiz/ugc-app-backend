@@ -20,6 +20,7 @@ export class UsersController {
       user.email ?? '',
       dto.role,
       dto.referralCode,
+      user.displayName,
     );
   }
 }

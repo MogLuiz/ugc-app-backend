@@ -35,7 +35,7 @@ export class UsersService {
     private readonly referralsService: ReferralsService,
   ) {}
 
-  async bootstrap(authUserId: string, rawEmail: string, role: UserRole, referralCode?: string) {
+  async bootstrap(authUserId: string, rawEmail: string, role: UserRole, referralCode?: string, displayName?: string) {
     const email = normalizeEmail(rawEmail || `${authUserId}@unknown`);
 
     // Step 1: idempotent — return existing user if already bootstrapped with this authUserId
@@ -74,7 +74,8 @@ export class UsersService {
       throw err;
     }
 
-    const profileName = email.split('@')[0];
+    const normalizedDisplayName = displayName?.trim().replace(/\s+/g, ' ');
+    const profileName = normalizedDisplayName || email.split('@')[0];
     const profile = this.profileRepo.create({ userId: user.id, name: profileName });
     await this.profileRepo.save(profile);
 
