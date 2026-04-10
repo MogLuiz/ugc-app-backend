@@ -117,8 +117,15 @@ export class OpenOffersService {
       limit,
     });
 
+    const pendingCounts = await this.openOffersRepository.countPendingApplicationsByOfferIds(
+      items.map((o) => o.id),
+    );
+
     return {
-      items: items.map((o) => this.buildOfferPayload(o, o.jobType)),
+      items: items.map((o) => ({
+        ...this.buildOfferPayload(o, o.jobType),
+        applicationsToReviewCount: pendingCounts[o.id] ?? 0,
+      })),
       pagination: { page, limit, total, totalPages: Math.max(1, Math.ceil(total / limit)) },
     };
   }

@@ -178,6 +178,21 @@ export class OpenOffersRepository {
       .execute();
   }
 
+  async countPendingApplicationsByOfferIds(
+    offerIds: string[],
+  ): Promise<Record<string, number>> {
+    if (offerIds.length === 0) return {};
+    const rows = await this.appRepo
+      .createQueryBuilder('app')
+      .select('app.openOfferId', 'offerId')
+      .addSelect('COUNT(*)', 'count')
+      .where('app.openOfferId IN (:...offerIds)', { offerIds })
+      .andWhere('app.status = :status', { status: ApplicationStatus.PENDING })
+      .groupBy('app.openOfferId')
+      .getRawMany<{ offerId: string; count: string }>();
+    return Object.fromEntries(rows.map((r) => [r.offerId, parseInt(r.count, 10)]));
+  }
+
   async listApplicationsByCreator(creatorUserId: string): Promise<OpenOfferApplication[]> {
     return this.appRepo
       .createQueryBuilder('app')
