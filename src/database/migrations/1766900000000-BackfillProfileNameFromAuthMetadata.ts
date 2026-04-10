@@ -48,7 +48,7 @@ export class BackfillProfileNameFromAuthMetadata1766900000000 implements Migrati
              AND u.auth_user_id = $2
              AND p.name = $3
              AND p.name <> $1
-           RETURNING p.id`,
+           RETURNING p.user_id`,
           [displayName, u.id, emailPrefix],
         );
 

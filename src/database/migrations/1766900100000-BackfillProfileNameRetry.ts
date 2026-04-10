@@ -56,7 +56,7 @@ export class BackfillProfileNameRetry1766900100000 implements MigrationInterface
              AND u.auth_user_id = $2
              AND p.name = $3
              AND p.name <> $1
-           RETURNING p.id`,
+           RETURNING p.user_id`,
           [displayName, u.id, emailPrefix],
         );
 
