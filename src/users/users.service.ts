@@ -74,9 +74,15 @@ export class UsersService {
     // aguarda e, ao receber unique violation, encontra o usuário já completo via
     // findByAuthUserIdWithProfiles — retornando payload correto sem inconsistência.
     let user: User;
+    /** Definido no escopo do bootstrap (evita uso sem declaração após merges). */
+    let referralError = false;
     try {
       user = await this.dataSource.transaction(async (manager) => {
-        const profileName = name?.trim() || email.split('@')[0];
+        const normalizedDisplayName =
+          typeof displayName === 'string' && displayName.trim().length > 0
+            ? displayName.trim().replace(/\s+/g, ' ')
+            : '';
+        const profileName = normalizedDisplayName || email.split('@')[0];
 
         const userEntity = manager.create(User, { authUserId, email, role });
         const savedUser = await manager.save(userEntity);
@@ -104,27 +110,6 @@ export class UsersService {
         return { ...(await this.buildPayload(raceFallback)), referralStatus: 'ok' as const };
       }
       throw err;
-    }
-
-    const normalizedDisplayName = displayName?.trim().replace(/\s+/g, ' ');
-    const profileName = normalizedDisplayName || email.split('@')[0];
-    const profile = this.profileRepo.create({ userId: user.id, name: profileName });
-    await this.profileRepo.save(profile);
-
-    if (role === UserRole.CREATOR) {
-      const creator = this.creatorProfileRepo.create({ userId: user.id });
-      await this.creatorProfileRepo.save(creator);
-    } else {
-      const company = this.companyProfileRepo.create({ userId: user.id });
-      await this.companyProfileRepo.save(company);
-    }
-
-    const portfolio = this.portfolioRepo.create({ user: { id: user.id } });
-    try {
-      await this.portfolioRepo.save(portfolio);
-    } catch (err) {
-      if (!isUniqueViolation(err)) throw err;
-      this.logger.warn(`bootstrap: portfolio already exists for user ${user.id}, skipping`);
     }
 
     if (referralCode) {
