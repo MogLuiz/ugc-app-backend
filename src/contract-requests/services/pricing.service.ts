@@ -7,7 +7,10 @@ export type PricingBreakdown = {
   distanceKm: number;
   transportFee: number;
   transport: TransportQuote;
+  /** Taxa da plataforma descontada do creator (não somada ao total pago pela empresa). */
   platformFee: number;
+  platformFeeRate: number;
+  /** Valor total pago pela empresa: creatorBasePrice + transportFee. */
   totalPrice: number;
   totalAmount: number;
   transportPricePerKmUsed: number;
@@ -19,6 +22,8 @@ type BuildPricingParams = {
   distanceKm: number;
   transportPricePerKm: number;
   transportMinimumFee: number;
+  /** Taxa da plataforma (ex: 0.15 = 15%). Default 0 — backward-compatible. */
+  platformFeeRate?: number;
 };
 
 @Injectable()
@@ -37,11 +42,12 @@ export class PricingService {
       throw new Error('Nao foi possivel calcular o transporte sem distancia valida.');
     }
 
+    const rate = params.platformFeeRate ?? 0;
+    const platformFee = this.roundToTwoDecimals(params.creatorBasePrice * rate);
     const transportFee = transport.price;
-    const platformFee = 0;
-    const totalAmount = this.roundToTwoDecimals(
-      params.creatorBasePrice + transportFee + platformFee,
-    );
+    // Empresa paga: creatorBasePrice + transportFee.
+    // platformFee é descontado internamente do repasse ao creator — não entra no total.
+    const totalAmount = this.roundToTwoDecimals(params.creatorBasePrice + transportFee);
     const totalPrice = totalAmount;
 
     return {
@@ -51,6 +57,7 @@ export class PricingService {
       transportFee,
       transport,
       platformFee,
+      platformFeeRate: rate,
       totalPrice,
       totalAmount,
       transportPricePerKmUsed: this.roundToTwoDecimals(params.transportPricePerKm),

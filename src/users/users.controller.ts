@@ -7,7 +7,7 @@ import { BootstrapUserDto } from './dto/bootstrap-user.dto';
 
 @Controller('users')
 export class UsersController {
-  constructor(private usersService: UsersService) {}
+  constructor(private usersService: UsersService) { }
 
   @Post('bootstrap')
   @UseGuards(SupabaseAuthGuard)
@@ -20,7 +20,7 @@ export class UsersController {
       user.email ?? '',
       dto.role,
       dto.referralCode,
-      dto.name,
+      user.displayName,
     );
   }
 }

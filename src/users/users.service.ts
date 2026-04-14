@@ -34,25 +34,9 @@ export class UsersService {
     private portfolioMediaRepo: Repository<PortfolioMedia>,
     private readonly referralsService: ReferralsService,
     private readonly dataSource: DataSource,
-  ) {}
+  ) { }
 
-  /**
-   * Cria ou recupera o usuário e todas as entidades 1:1 associadas.
-   *
-   * Owner único: este método é acionado exclusivamente por getSession() quando
-   * GET /profiles/me retorna 404 (usuário não existe no banco). Nenhum outro ponto
-   * do sistema deve disparar bootstrap como parte do fluxo normal.
-   *
-   * Idempotente: chamadas repetidas ou concorrentes para o mesmo authUserId
-   * convergem para o mesmo estado final sem erro e sem duplicação de dados.
-   */
-  async bootstrap(
-    authUserId: string,
-    rawEmail: string,
-    role: UserRole,
-    referralCode?: string,
-    name?: string,
-  ) {
+  async bootstrap(authUserId: string, rawEmail: string, role: UserRole, referralCode?: string, displayName?: string) {
     const email = normalizeEmail(rawEmail || `${authUserId}@unknown`);
 
     // Step 1: idempotente — retorna usuário existente se já bootstrapado com este authUserId.
@@ -122,9 +106,27 @@ export class UsersService {
       throw err;
     }
 
-    // referralStatus: 'ok' se o claim concluiu sem erro inesperado (inclusive skips intencionais),
-    // 'error' se houve erro de DB/transiente — frontend deve manter o metadata para retry.
-    let referralError = false;
+    const normalizedDisplayName = displayName?.trim().replace(/\s+/g, ' ');
+    const profileName = normalizedDisplayName || email.split('@')[0];
+    const profile = this.profileRepo.create({ userId: user.id, name: profileName });
+    await this.profileRepo.save(profile);
+
+    if (role === UserRole.CREATOR) {
+      const creator = this.creatorProfileRepo.create({ userId: user.id });
+      await this.creatorProfileRepo.save(creator);
+    } else {
+      const company = this.companyProfileRepo.create({ userId: user.id });
+      await this.companyProfileRepo.save(company);
+    }
+
+    const portfolio = this.portfolioRepo.create({ user: { id: user.id } });
+    try {
+      await this.portfolioRepo.save(portfolio);
+    } catch (err) {
+      if (!isUniqueViolation(err)) throw err;
+      this.logger.warn(`bootstrap: portfolio already exists for user ${user.id}, skipping`);
+    }
+
     if (referralCode) {
       try {
         await this.referralsService.claimReferral(referralCode, user.id);
@@ -183,49 +185,49 @@ export class UsersService {
       updatedAt: user.updatedAt,
       profile: user.profile
         ? {
-            userId: user.profile.userId,
-            name: user.profile.name,
-            birthDate: user.profile.birthDate,
-            gender: user.profile.gender,
-            photoUrl: user.profile.photoUrl,
-            rating: user.profile.rating,
-            addressStreet: user.profile.addressStreet,
-            addressNumber: user.profile.addressNumber,
-            addressCity: user.profile.addressCity,
-            addressState: user.profile.addressState,
-            addressZipCode: user.profile.addressZipCode,
-            bio: user.profile.bio,
-            onboardingStep: user.profile.onboardingStep,
-            createdAt: user.profile.createdAt,
-            updatedAt: user.profile.updatedAt,
-          }
+          userId: user.profile.userId,
+          name: user.profile.name,
+          birthDate: user.profile.birthDate,
+          gender: user.profile.gender,
+          photoUrl: user.profile.photoUrl,
+          rating: user.profile.rating,
+          addressStreet: user.profile.addressStreet,
+          addressNumber: user.profile.addressNumber,
+          addressCity: user.profile.addressCity,
+          addressState: user.profile.addressState,
+          addressZipCode: user.profile.addressZipCode,
+          bio: user.profile.bio,
+          onboardingStep: user.profile.onboardingStep,
+          createdAt: user.profile.createdAt,
+          updatedAt: user.profile.updatedAt,
+        }
         : null,
       creatorProfile: user.creatorProfile
         ? {
-            userId: user.creatorProfile.userId,
-            cpf: user.creatorProfile.cpf,
-            instagramUsername: user.creatorProfile.instagramUsername,
-            tiktokUsername: user.creatorProfile.tiktokUsername,
-            referralSource: user.creatorProfile.referralSource,
-            portfolioUrl: user.creatorProfile.portfolioUrl,
-            createdAt: user.creatorProfile.createdAt,
-            updatedAt: user.creatorProfile.updatedAt,
-          }
+          userId: user.creatorProfile.userId,
+          cpf: user.creatorProfile.cpf,
+          instagramUsername: user.creatorProfile.instagramUsername,
+          tiktokUsername: user.creatorProfile.tiktokUsername,
+          referralSource: user.creatorProfile.referralSource,
+          portfolioUrl: user.creatorProfile.portfolioUrl,
+          createdAt: user.creatorProfile.createdAt,
+          updatedAt: user.creatorProfile.updatedAt,
+        }
         : null,
       companyProfile: user.companyProfile
         ? {
-            userId: user.companyProfile.userId,
-            documentType: user.companyProfile.documentType,
-            documentNumber: user.companyProfile.documentNumber,
-            companyName: user.companyProfile.companyName,
-            jobTitle: user.companyProfile.jobTitle,
-            businessNiche: user.companyProfile.businessNiche,
-            websiteUrl: user.companyProfile.websiteUrl,
-            instagramUsername: user.companyProfile.instagramUsername,
-            tiktokUsername: user.companyProfile.tiktokUsername,
-            createdAt: user.companyProfile.createdAt,
-            updatedAt: user.companyProfile.updatedAt,
-          }
+          userId: user.companyProfile.userId,
+          documentType: user.companyProfile.documentType,
+          documentNumber: user.companyProfile.documentNumber,
+          companyName: user.companyProfile.companyName,
+          jobTitle: user.companyProfile.jobTitle,
+          businessNiche: user.companyProfile.businessNiche,
+          websiteUrl: user.companyProfile.websiteUrl,
+          instagramUsername: user.companyProfile.instagramUsername,
+          tiktokUsername: user.companyProfile.tiktokUsername,
+          createdAt: user.companyProfile.createdAt,
+          updatedAt: user.companyProfile.updatedAt,
+        }
         : null,
       portfolio: {
         id: portfolio.id,

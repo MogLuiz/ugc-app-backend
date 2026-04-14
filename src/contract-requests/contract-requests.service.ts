@@ -53,6 +53,25 @@ type PreparedContractRequest = {
   durationMinutes: number;
   description: string;
   creatorBasePrice: number;
+  platformFeeRateSnapshot: number;
+  pricing: ReturnType<PricingService['buildPricing']>;
+};
+
+export type CreateFromOpenOfferParams = {
+  companyUserId: string;
+  creatorUser: User;
+  jobTypeId: string;
+  offeredAmount: number;
+  openOfferId: string;
+  startsAt: Date;
+  durationMinutes: number;
+  jobAddress: string;
+  jobFormattedAddress: string | null;
+  jobLatitude: number;
+  jobLongitude: number;
+  distanceKm: number;
+  effectiveServiceRadiusKm: number;
+  platformFeeRateSnapshot: number;
   pricing: ReturnType<PricingService['buildPricing']>;
 };
 
@@ -148,6 +167,8 @@ export class ContractRequestsService {
           transportMinimumFeeUsed: prepared.pricing.transportMinimumFeeUsed,
           creatorNameSnapshot: prepared.creatorUser.profile?.name ?? 'Creator',
           creatorAvatarUrlSnapshot: prepared.creatorUser.profile?.photoUrl ?? null,
+          platformFeeRateSnapshot: prepared.platformFeeRateSnapshot,
+          openOfferId: null,
           rejectionReason: null,
         },
         manager,
@@ -345,6 +366,51 @@ export class ContractRequestsService {
     return payload;
   }
 
+  /**
+   * Persiste um ContractRequest sempre em ACCEPTED e cria a conversa associada.
+   * Deve ser chamado dentro de uma transaction existente.
+   * Toda a validação (geocoding, schedule, pricing) é responsabilidade do chamador.
+   */
+  async createFromOpenOfferSelection(
+    params: CreateFromOpenOfferParams,
+    manager: EntityManager,
+  ): Promise<ContractRequest> {
+    const { creatorUser, pricing, platformFeeRateSnapshot, openOfferId, ...rest } = params;
+
+    const created = await this.contractRequestsRepository.createAndSave(
+      {
+        ...rest,
+        creatorUserId: creatorUser.id,
+        mode: JobMode.PRESENTIAL,
+        status: ContractRequestStatus.ACCEPTED,
+        paymentStatus: PaymentStatus.PAID,
+        currency: pricing.currency,
+        termsAcceptedAt: new Date(),
+        effectiveServiceRadiusKmUsed: params.effectiveServiceRadiusKm,
+        transportFee: pricing.transportFee,
+        creatorBasePrice: pricing.creatorBasePrice,
+        platformFee: pricing.platformFee,
+        totalPrice: pricing.totalPrice,
+        transportPricePerKmUsed: pricing.transportPricePerKmUsed,
+        transportMinimumFeeUsed: pricing.transportMinimumFeeUsed,
+        creatorNameSnapshot: creatorUser.profile?.name ?? 'Creator',
+        creatorAvatarUrlSnapshot: creatorUser.profile?.photoUrl ?? null,
+        platformFeeRateSnapshot,
+        openOfferId,
+        rejectionReason: null,
+      },
+      manager,
+    );
+
+    await this.conversationsService.ensureConversationForContractRequest(
+      created.id,
+      params.companyUserId,
+      manager,
+    );
+
+    return created;
+  }
+
   private async prepareContractRequest(
     user: AuthUser,
     dto: PreviewContractRequestDto | CreateContractRequestDto,
@@ -484,6 +550,7 @@ export class ContractRequestsService {
       distanceKm,
       transportPricePerKm,
       transportMinimumFee,
+      platformFeeRate: jobType.platformFeeRate,
     });
 
     return {
@@ -500,6 +567,7 @@ export class ContractRequestsService {
       durationMinutes: jobType.durationMinutes,
       description: dto.description.trim(),
       creatorBasePrice: creatorBasePriceReais,
+      platformFeeRateSnapshot: jobType.platformFeeRate,
       pricing,
     };
   }
@@ -621,6 +689,7 @@ export class ContractRequestsService {
       creatorNameSnapshot: contractRequest.creatorNameSnapshot,
       creatorAvatarUrlSnapshot: contractRequest.creatorAvatarUrlSnapshot,
       rejectionReason: contractRequest.rejectionReason,
+      openOfferId: contractRequest.openOfferId,
       completedAt: contractRequest.completedAt?.toISOString() ?? null,
       createdAt: contractRequest.createdAt?.toISOString(),
       updatedAt: contractRequest.updatedAt?.toISOString(),

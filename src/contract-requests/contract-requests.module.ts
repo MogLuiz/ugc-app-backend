@@ -26,5 +26,6 @@ import { TransportService } from './services/transport.service';
   ],
   controllers: [ContractRequestsController],
   providers: [ContractRequestsService, DistanceService, TransportService, PricingService],
+  exports: [ContractRequestsService],
 })
 export class ContractRequestsModule {}
