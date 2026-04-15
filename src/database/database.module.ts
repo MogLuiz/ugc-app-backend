@@ -22,6 +22,9 @@ import { Referral } from '../referrals/entities/referral.entity';
 import { Commission } from '../referrals/entities/commission.entity';
 import { OpenOffer } from '../open-offers/entities/open-offer.entity';
 import { OpenOfferApplication } from '../open-offers/entities/open-offer-application.entity';
+import { Payment } from '../payments/entities/payment.entity';
+import { CreatorPayout } from '../payments/entities/creator-payout.entity';
+import { PaymentProviderEvent } from '../payments/entities/payment-provider-event.entity';
 
 @Module({
   imports: [
@@ -54,6 +57,9 @@ import { OpenOfferApplication } from '../open-offers/entities/open-offer-applica
               Commission,
               OpenOffer,
               OpenOfferApplication,
+              Payment,
+              CreatorPayout,
+              PaymentProviderEvent,
             ],
             synchronize: false,
             logging: configService.get<string>('NODE_ENV') === 'development',
@@ -91,6 +97,9 @@ import { OpenOfferApplication } from '../open-offers/entities/open-offer-applica
             Commission,
             OpenOffer,
             OpenOfferApplication,
+            Payment,
+            CreatorPayout,
+            PaymentProviderEvent,
           ],
           synchronize: false,
           logging: configService.get<string>('NODE_ENV') === 'development',

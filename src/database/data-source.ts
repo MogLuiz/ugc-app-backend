@@ -25,6 +25,9 @@ import { AddJobTypePricingConfig1766800200000 } from './migrations/1766800200000
 import { AddContractRequestOpenOfferFields1766800300000 } from './migrations/1766800300000-AddContractRequestOpenOfferFields';
 import { BackfillProfileNameFromAuthMetadata1766900000000 } from './migrations/1766900000000-BackfillProfileNameFromAuthMetadata';
 import { BackfillProfileNameRetry1766900100000 } from './migrations/1766900100000-BackfillProfileNameRetry';
+import { CreatePaymentsTables1767000000000 } from './migrations/1767000000000-CreatePaymentsTables';
+import { AddCreatorProfilePayoutFields1767000100000 } from './migrations/1767000100000-AddCreatorProfilePayoutFields';
+import { AddPaymentTransportBreakdown1767000200000 } from './migrations/1767000200000-AddPaymentTransportBreakdown';
 
 config();
 
@@ -62,6 +65,9 @@ export const AppDataSource = new DataSource(
           AddContractRequestOpenOfferFields1766800300000,
           BackfillProfileNameFromAuthMetadata1766900000000,
           BackfillProfileNameRetry1766900100000,
+          CreatePaymentsTables1767000000000,
+          AddCreatorProfilePayoutFields1767000100000,
+          AddPaymentTransportBreakdown1767000200000,
         ],
         synchronize: false,
         logging: process.env.NODE_ENV === 'development',
@@ -101,6 +107,9 @@ export const AppDataSource = new DataSource(
           AddContractRequestOpenOfferFields1766800300000,
           BackfillProfileNameFromAuthMetadata1766900000000,
           BackfillProfileNameRetry1766900100000,
+          CreatePaymentsTables1767000000000,
+          AddCreatorProfilePayoutFields1767000100000,
+          AddPaymentTransportBreakdown1767000200000,
         ],
         synchronize: false,
         logging: process.env.NODE_ENV === 'development',

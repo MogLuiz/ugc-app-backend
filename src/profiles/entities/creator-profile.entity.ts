@@ -45,6 +45,24 @@ export class CreatorProfile {
   })
   serviceRadiusKm: number | null;
 
+  // Dados para repasse via PIX (preenchidos pelo creator)
+  @Column({ name: 'pix_key', type: 'varchar', length: 150, nullable: true })
+  pixKey: string | null;
+
+  /** cpf | cnpj | email | phone | random */
+  @Column({ name: 'pix_key_type', type: 'varchar', length: 20, nullable: true })
+  pixKeyType: 'cpf' | 'cnpj' | 'email' | 'phone' | 'random' | null;
+
+  @Column({ name: 'pix_holder_name', type: 'varchar', length: 255, nullable: true })
+  pixHolderName: string | null;
+
+  @Column({ name: 'pix_holder_document', type: 'varchar', length: 20, nullable: true })
+  pixHolderDocument: string | null;
+
+  /** pending | filled | verified */
+  @Column({ name: 'payout_details_status', type: 'varchar', length: 20, default: 'pending' })
+  payoutDetailsStatus: 'pending' | 'filled' | 'verified';
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

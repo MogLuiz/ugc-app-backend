@@ -154,6 +154,33 @@ export class EnvValidation {
   @IsOptional()
   @IsString()
   RAILWAY_GIT_COMMIT_SHA: string = '';
+
+  // Mercado Pago
+  @IsOptional()
+  @IsString()
+  MP_ACCESS_TOKEN: string = '';
+
+  @IsOptional()
+  @IsString()
+  MP_PUBLIC_KEY: string = '';
+
+  @IsOptional()
+  @IsString()
+  MP_WEBHOOK_SECRET: string = '';
+
+  // URLs base para callbacks e webhooks
+  @IsOptional()
+  @IsString()
+  API_BASE_URL: string = 'http://localhost:3000';
+
+  @IsOptional()
+  @IsString()
+  FRONTEND_BASE_URL: string = 'http://localhost:5173';
+
+  // Admin interno
+  @IsOptional()
+  @IsString()
+  INTERNAL_ADMIN_API_KEY: string = '';
 }
 
 export function validateEnv(config: Record<string, unknown>): EnvValidation {

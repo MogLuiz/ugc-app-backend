@@ -20,6 +20,7 @@ import { ConversationsModule } from './conversations/conversations.module';
 import { CreatorModule } from './creator/creator.module';
 import { ReferralsModule } from './referrals/referrals.module';
 import { OpenOffersModule } from './open-offers/open-offers.module';
+import { PaymentsModule } from './payments/payments.module';
 
 @Module({
   imports: [
@@ -40,6 +41,7 @@ import { OpenOffersModule } from './open-offers/open-offers.module';
     CreatorModule,
     ReferralsModule,
     OpenOffersModule,
+    PaymentsModule,
     UploadsModule,
     HealthModule,
   ],
