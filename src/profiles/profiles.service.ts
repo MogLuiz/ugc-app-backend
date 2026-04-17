@@ -26,7 +26,7 @@ import { DistanceService } from '../contract-requests/services/distance.service'
 
 const DEFAULT_MARKETPLACE_PAGE = 1;
 const DEFAULT_MARKETPLACE_LIMIT = 8;
-const MAX_MARKETPLACE_LIMIT = 24;
+const MAX_MARKETPLACE_LIMIT = 500;
 const DEFAULT_WORKING_START = '09:00:00';
 const DEFAULT_WORKING_END = '18:00:00';
 
