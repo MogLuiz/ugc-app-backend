@@ -253,7 +253,7 @@ describe('ContractRequestsService', () => {
 
   // ─── Contratação direta (regressão) ────────────────────────────────────────
 
-  it('creates accepted contract request when creator auto-accepts', async () => {
+  it('creates contract request with PENDING_PAYMENT even when creator has auto_accept_bookings', async () => {
     const { service, mocks } = createService();
 
     const result = await service.create(
@@ -269,8 +269,8 @@ describe('ContractRequestsService', () => {
       },
     );
 
-    expect(result.status).toBe(ContractRequestStatus.ACCEPTED);
-    expect(mocks.conversationsService.ensureConversationForContractRequest).toHaveBeenCalledTimes(1);
+    expect(result.status).toBe(ContractRequestStatus.PENDING_PAYMENT);
+    expect(mocks.conversationsService.ensureConversationForContractRequest).not.toHaveBeenCalled();
   });
 
   it('regression: direct hire platformFeeRateSnapshot = 0 when jobType.platformFeeRate = 0', async () => {
