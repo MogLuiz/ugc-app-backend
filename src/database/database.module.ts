@@ -25,6 +25,9 @@ import { OpenOfferApplication } from '../open-offers/entities/open-offer-applica
 import { Payment } from '../payments/entities/payment.entity';
 import { CreatorPayout } from '../payments/entities/creator-payout.entity';
 import { PaymentProviderEvent } from '../payments/entities/payment-provider-event.entity';
+import { CompanyBalance } from '../billing/entities/company-balance.entity';
+import { CompanyBalanceTransaction } from '../billing/entities/company-balance-transaction.entity';
+import { RefundRequest } from '../billing/entities/refund-request.entity';
 
 @Module({
   imports: [
@@ -60,6 +63,9 @@ import { PaymentProviderEvent } from '../payments/entities/payment-provider-even
               Payment,
               CreatorPayout,
               PaymentProviderEvent,
+              CompanyBalance,
+              CompanyBalanceTransaction,
+              RefundRequest,
             ],
             synchronize: false,
             logging: configService.get<string>('NODE_ENV') === 'development',
@@ -100,6 +106,9 @@ import { PaymentProviderEvent } from '../payments/entities/payment-provider-even
             Payment,
             CreatorPayout,
             PaymentProviderEvent,
+            CompanyBalance,
+            CompanyBalanceTransaction,
+            RefundRequest,
           ],
           synchronize: false,
           logging: configService.get<string>('NODE_ENV') === 'development',

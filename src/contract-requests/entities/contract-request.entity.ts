@@ -205,6 +205,14 @@ export class ContractRequest {
   @Column({ name: 'open_offer_id', type: 'uuid', nullable: true })
   openOfferId: string | null;
 
+  /**
+   * Data limite para o creator responder ao convite.
+   * Calculado em criação como: now() + INVITE_EXPIRY_HOURS.
+   * Nullable para contratos legados e contratos de oferta aberta (ACCEPTED direto).
+   */
+  @Column({ name: 'expires_at', type: 'timestamptz', nullable: true })
+  expiresAt: Date | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

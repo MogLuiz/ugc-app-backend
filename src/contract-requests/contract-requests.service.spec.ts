@@ -206,6 +206,11 @@ describe('ContractRequestsService', () => {
       }),
     };
 
+    const companyBalanceService = {
+      getBalance: jest.fn().mockResolvedValue(null),
+      creditFromPayment: jest.fn().mockResolvedValue(undefined),
+    };
+
     const service = new ContractRequestsService(
       configService as never,
       dataSource,
@@ -220,6 +225,7 @@ describe('ContractRequestsService', () => {
       schedulingConflictService as never,
       conversationsService as never,
       eventEmitter as never,
+      companyBalanceService as never,
     );
 
     return {

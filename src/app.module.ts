@@ -21,6 +21,7 @@ import { CreatorModule } from './creator/creator.module';
 import { ReferralsModule } from './referrals/referrals.module';
 import { OpenOffersModule } from './open-offers/open-offers.module';
 import { PaymentsModule } from './payments/payments.module';
+import { BillingModule } from './billing/billing.module';
 
 @Module({
   imports: [
@@ -42,6 +43,7 @@ import { PaymentsModule } from './payments/payments.module';
     ReferralsModule,
     OpenOffersModule,
     PaymentsModule,
+    BillingModule,
     UploadsModule,
     HealthModule,
   ],

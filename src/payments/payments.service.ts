@@ -8,14 +8,16 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { ContractRequest } from '../contract-requests/entities/contract-request.entity';
 import { ContractRequestStatus } from '../common/enums/contract-request-status.enum';
+import { PaymentStatus as ContractPaymentStatus } from '../common/enums/payment-status.enum';
 import { AuthUser } from '../common/interfaces/auth-user.interface';
 import { User } from '../users/entities/user.entity';
 import { Payment } from './entities/payment.entity';
 import { PaymentStatus } from './enums/payment-status.enum';
 import { PayoutStatus } from './enums/payout-status.enum';
+import { SettlementStatus } from './enums/settlement-status.enum';
 import {
   PAYMENT_PROVIDER,
   IPaymentProvider,
@@ -26,6 +28,8 @@ import {
   InitiatePaymentResponseDto,
   PaymentResponseDto,
 } from './dto/payment-response.dto';
+import { CompanyBalanceService } from '../billing/company-balance.service';
+import { CreatorPayout } from './entities/creator-payout.entity';
 
 @Injectable()
 export class PaymentsService {
@@ -38,9 +42,13 @@ export class PaymentsService {
     private readonly contractRequestRepo: Repository<ContractRequest>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
+    @InjectRepository(CreatorPayout)
+    private readonly payoutRepo: Repository<CreatorPayout>,
     @Inject(PAYMENT_PROVIDER)
     private readonly provider: IPaymentProvider,
     private readonly configService: ConfigService,
+    private readonly companyBalanceService: CompanyBalanceService,
+    private readonly dataSource: DataSource,
   ) {}
 
   async initiatePayment(
@@ -55,14 +63,15 @@ export class PaymentsService {
     const contract = await this.contractRequestRepo.findOne({
       where: { id: dto.contractRequestId, companyUserId: user.id },
     });
+    if (!contract) throw new NotFoundException('Contrato não encontrado');
 
-    if (!contract) {
-      throw new NotFoundException('Contrato não encontrado');
-    }
-
-    if (contract.status !== ContractRequestStatus.ACCEPTED) {
+    const allowedStatuses: ContractRequestStatus[] = [
+      ContractRequestStatus.PENDING_PAYMENT,
+      ContractRequestStatus.ACCEPTED,
+    ];
+    if (!allowedStatuses.includes(contract.status)) {
       throw new BadRequestException(
-        'Pagamento só pode ser iniciado para contratos com status ACCEPTED',
+        `Pagamento só pode ser iniciado para contratos com status PENDING_PAYMENT ou ACCEPTED (atual: ${contract.status})`,
       );
     }
 
@@ -75,11 +84,12 @@ export class PaymentsService {
         throw new ConflictException('Este contrato já foi pago');
       }
       // Se a preferência ainda não foi criada (falha anterior), tenta novamente
-      if (!existing.externalPreferenceId) {
+      if (!existing.externalPreferenceId && existing.creditAppliedCents < existing.grossAmountCents) {
+        const remainderCents = existing.grossAmountCents - existing.creditAppliedCents;
         const frontendBase = this.configService.get<string>('FRONTEND_BASE_URL') ?? '';
         const intent = await this.provider.createPaymentIntent({
           paymentId: existing.id,
-          amountCents: existing.grossAmountCents,
+          amountCents: remainderCents,
           currency: 'BRL',
           payerEmail: authUser.email ?? '',
           description: `Contrato UGC #${contract.id.slice(0, 8)}`,
@@ -95,19 +105,72 @@ export class PaymentsService {
         existing.status = PaymentStatus.PROCESSING;
         await this.paymentRepo.save(existing);
       }
-      // Retorna o payment existente para o frontend continuar do mesmo ponto
       return this.buildInitiateResponse(existing);
     }
 
     // 4. Congela snapshot financeiro em centavos
-    // Fallback seguro para campos potencialmente nulos no ContractRequest
     const grossAmountCents       = Math.round((contract.totalPrice      ?? 0) * 100);
     const platformFeeCents       = Math.round((contract.platformFee     ?? 0) * 100);
     const creatorBaseAmountCents = Math.round((contract.creatorBasePrice ?? 0) * 100);
     const transportFeeCents      = Math.round((contract.transportFee    ?? 0) * 100);
     const creatorNetAmountCents  = creatorBaseAmountCents + transportFeeCents;
 
-    // 5. Cria Payment
+    // 5. Verifica crédito disponível
+    const balance = await this.companyBalanceService.getBalance(user.id);
+    const creditToApply = Math.min(balance?.availableCents ?? 0, grossAmountCents);
+    const remainderCents = grossAmountCents - creditToApply;
+
+    // 6. Caso 100% coberto por crédito — confirmar diretamente sem MP
+    if (remainderCents === 0 && creditToApply > 0) {
+      return this.dataSource.transaction(async (manager) => {
+        const payment = manager.getRepository(Payment).create({
+          contractRequestId: contract.id,
+          companyUserId: contract.companyUserId,
+          creatorUserId: contract.creatorUserId,
+          grossAmountCents,
+          platformFeeCents,
+          creatorBaseAmountCents,
+          transportFeeCents,
+          creatorNetAmountCents,
+          currency: contract.currency,
+          status: PaymentStatus.PAID,
+          payoutStatus: PayoutStatus.PENDING,
+          settlementStatus: SettlementStatus.HELD,
+          creditAppliedCents: creditToApply,
+          gatewayName: 'credit',
+          paidAt: new Date(),
+        });
+        const savedPayment = await manager.save(Payment, payment);
+
+        // Debitar crédito imediatamente (único fluxo sem webhook)
+        await this.companyBalanceService.useCredit(user.id, creditToApply, savedPayment.id, manager);
+
+        // Criar CreatorPayout
+        const payout = manager.getRepository(CreatorPayout).create({
+          paymentId: savedPayment.id,
+          creatorUserId: contract.creatorUserId,
+          amountCents: creatorNetAmountCents,
+          currency: contract.currency,
+          status: PayoutStatus.PENDING,
+        });
+        await manager.save(CreatorPayout, payout);
+
+        // Transicionar contrato se PENDING_PAYMENT → PENDING_ACCEPTANCE
+        if (contract.status === ContractRequestStatus.PENDING_PAYMENT) {
+          await manager.update(ContractRequest, { id: contract.id }, {
+            status: ContractRequestStatus.PENDING_ACCEPTANCE,
+            paymentStatus: ContractPaymentStatus.PAID,
+          });
+        }
+
+        this.logger.log(
+          `Pagamento 100% crédito: paymentId=${savedPayment.id} credit=${creditToApply}`,
+        );
+        return this.buildInitiateResponse(savedPayment);
+      });
+    }
+
+    // 7. Cria Payment (com crédito parcial ou sem crédito)
     const payment = this.paymentRepo.create({
       contractRequestId: contract.id,
       companyUserId: contract.companyUserId,
@@ -120,21 +183,20 @@ export class PaymentsService {
       currency: contract.currency,
       status: PaymentStatus.PENDING,
       payoutStatus: PayoutStatus.NOT_DUE,
+      settlementStatus: SettlementStatus.HELD,
+      creditAppliedCents: creditToApply,
       gatewayName: 'mercado_pago',
     });
     const savedPayment = await this.paymentRepo.save(payment);
 
-    // 6. Cria intenção de pagamento no gateway
+    // 8. Cria intenção de pagamento no gateway pelo valor restante
     const frontendBase = this.configService.get<string>('FRONTEND_BASE_URL') ?? '';
-    const payerEmail = authUser.email ?? '';
-    const description = `Contrato UGC #${contract.id.slice(0, 8)}`;
-
     const intent = await this.provider.createPaymentIntent({
       paymentId: savedPayment.id,
-      amountCents: grossAmountCents,
+      amountCents: remainderCents,
       currency: 'BRL',
-      payerEmail,
-      description,
+      payerEmail: authUser.email ?? '',
+      description: `Contrato UGC #${contract.id.slice(0, 8)}`,
       contractRequestId: contract.id,
       callbackUrls: {
         success: `${frontendBase}/pagamento/sucesso?paymentId=${savedPayment.id}`,
@@ -143,14 +205,13 @@ export class PaymentsService {
       },
     });
 
-    // 7. Persiste os IDs do gateway
     savedPayment.externalPreferenceId = intent.preferenceId;
     savedPayment.externalReference = intent.externalReference;
     savedPayment.status = PaymentStatus.PROCESSING;
     await this.paymentRepo.save(savedPayment);
 
     this.logger.log(
-      `Pagamento iniciado: paymentId=${savedPayment.id} preferenceId=${intent.preferenceId}`,
+      `Pagamento iniciado: paymentId=${savedPayment.id} gross=${grossAmountCents} credit=${creditToApply} remainder=${remainderCents}`,
     );
 
     return this.buildInitiateResponse(savedPayment);
@@ -222,6 +283,7 @@ export class PaymentsService {
 
   private buildInitiateResponse(payment: Payment): InitiatePaymentResponseDto {
     const mpProvider = this.provider as { getPublicKey?: () => string };
+    const remainderCents = payment.grossAmountCents - payment.creditAppliedCents;
     return {
       paymentId: payment.id,
       preferenceId: payment.externalPreferenceId ?? '',
@@ -232,6 +294,9 @@ export class PaymentsService {
       transportFeeCents: payment.transportFeeCents,
       creatorNetAmountCents: payment.creatorNetAmountCents,
       currency: payment.currency,
+      creditAppliedCents: payment.creditAppliedCents,
+      remainderCents,
+      alreadyPaid: payment.status === PaymentStatus.PAID,
     };
   }
 

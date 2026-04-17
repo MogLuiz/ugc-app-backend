@@ -15,6 +15,7 @@ import { WebhooksController } from './webhooks/webhooks.controller';
 import { PayoutsService } from './payouts/payouts.service';
 import { PayoutsController } from './payouts/payouts.controller';
 import { InternalAdminGuard } from './guards/internal-admin.guard';
+import { BillingModule } from '../billing/billing.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { InternalAdminGuard } from './guards/internal-admin.guard';
       User,
     ]),
     AuthModule,
+    BillingModule,
   ],
   controllers: [
     PaymentsController,

@@ -181,6 +181,13 @@ export class EnvValidation {
   @IsOptional()
   @IsString()
   INTERNAL_ADMIN_API_KEY: string = '';
+
+  // Billing
+  /** Horas até o convite direto expirar após criação. Padrão: 24h. */
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  INVITE_EXPIRY_HOURS: number = 24;
 }
 
 export function validateEnv(config: Record<string, unknown>): EnvValidation {

@@ -28,6 +28,10 @@ import { BackfillProfileNameRetry1766900100000 } from './migrations/176690010000
 import { CreatePaymentsTables1767000000000 } from './migrations/1767000000000-CreatePaymentsTables';
 import { AddCreatorProfilePayoutFields1767000100000 } from './migrations/1767000100000-AddCreatorProfilePayoutFields';
 import { AddPaymentTransportBreakdown1767000200000 } from './migrations/1767000200000-AddPaymentTransportBreakdown';
+import { AddBillingTables1767000300000 } from './migrations/1767000300000-AddBillingTables';
+import { AddPaymentSettlementAndCredit1767000400000 } from './migrations/1767000400000-AddPaymentSettlementAndCredit';
+import { AddContractExpiresAt1767000500000 } from './migrations/1767000500000-AddContractExpiresAt';
+import { AddPendingPaymentAndExpiredStatuses1767000600000 } from './migrations/1767000600000-AddPendingPaymentAndExpiredStatuses';
 
 config();
 
@@ -68,6 +72,10 @@ export const AppDataSource = new DataSource(
           CreatePaymentsTables1767000000000,
           AddCreatorProfilePayoutFields1767000100000,
           AddPaymentTransportBreakdown1767000200000,
+          AddBillingTables1767000300000,
+          AddPaymentSettlementAndCredit1767000400000,
+          AddContractExpiresAt1767000500000,
+          AddPendingPaymentAndExpiredStatuses1767000600000,
         ],
         synchronize: false,
         logging: process.env.NODE_ENV === 'development',
@@ -110,6 +118,10 @@ export const AppDataSource = new DataSource(
           CreatePaymentsTables1767000000000,
           AddCreatorProfilePayoutFields1767000100000,
           AddPaymentTransportBreakdown1767000200000,
+          AddBillingTables1767000300000,
+          AddPaymentSettlementAndCredit1767000400000,
+          AddContractExpiresAt1767000500000,
+          AddPendingPaymentAndExpiredStatuses1767000600000,
         ],
         synchronize: false,
         logging: process.env.NODE_ENV === 'development',

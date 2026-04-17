@@ -38,6 +38,10 @@ import {
   CONTRACT_REQUEST_COMPLETED_EVENT,
   ContractRequestCompletedEvent,
 } from './events/contract-request-completed.event';
+import { CompanyBalanceService } from '../billing/company-balance.service';
+import { BalanceTransactionType } from '../billing/enums/balance-transaction-type.enum';
+import { Payment } from '../payments/entities/payment.entity';
+import { SettlementStatus } from '../payments/enums/settlement-status.enum';
 
 type PreparedContractRequest = {
   companyUser: User;
@@ -109,6 +113,7 @@ export class ContractRequestsService {
     private readonly schedulingConflictService: SchedulingConflictService,
     private readonly conversationsService: ConversationsService,
     private readonly eventEmitter: EventEmitter2,
+    private readonly companyBalanceService: CompanyBalanceService,
   ) {}
 
   async preview(user: AuthUser, dto: PreviewContractRequestDto) {
@@ -136,9 +141,11 @@ export class ContractRequestsService {
   async create(user: AuthUser, dto: CreateContractRequestDto) {
     return this.dataSource.transaction(async (manager) => {
       const prepared = await this.prepareContractRequest(user, dto, manager);
-      const initialStatus = prepared.creatorUser.creatorProfile?.autoAcceptBookings
-        ? ContractRequestStatus.ACCEPTED
-        : ContractRequestStatus.PENDING_ACCEPTANCE;
+
+      // Novo fluxo: empresa paga antes de enviar ao creator → sempre PENDING_PAYMENT.
+      // A notificação ao creator só acontece após confirmação do pagamento (webhook).
+      const inviteExpiryHours = this.configService.get<number>('INVITE_EXPIRY_HOURS') ?? 24;
+      const expiresAt = new Date(Date.now() + inviteExpiryHours * 60 * 60 * 1000);
 
       const created = await this.contractRequestsRepository.createAndSave(
         {
@@ -147,7 +154,7 @@ export class ContractRequestsService {
           jobTypeId: dto.jobTypeId,
           mode: JobMode.PRESENTIAL,
           description: prepared.description,
-          status: initialStatus,
+          status: ContractRequestStatus.PENDING_PAYMENT,
           paymentStatus: PaymentStatus.PAID,
           currency: prepared.pricing.currency,
           termsAcceptedAt: new Date(),
@@ -170,17 +177,10 @@ export class ContractRequestsService {
           platformFeeRateSnapshot: prepared.platformFeeRateSnapshot,
           openOfferId: null,
           rejectionReason: null,
+          expiresAt,
         },
         manager,
       );
-
-      if (created.status === ContractRequestStatus.ACCEPTED) {
-        await this.conversationsService.ensureConversationForContractRequest(
-          created.id,
-          prepared.companyUser.id,
-          manager,
-        );
-      }
 
       return this.buildPayload(created);
     });
@@ -262,6 +262,15 @@ export class ContractRequestsService {
 
       const updated = await this.contractRequestsRepository.save(contractRequest, manager);
 
+      // Marcar settlement como APPLIED no Payment associado
+      const payment = await manager.findOne(Payment, {
+        where: { contractRequestId: contractRequest.id },
+      });
+      if (payment && payment.settlementStatus === SettlementStatus.HELD) {
+        payment.settlementStatus = SettlementStatus.APPLIED;
+        await manager.save(Payment, payment);
+      }
+
       await this.conversationsService.ensureConversationForContractRequest(
         updated.id,
         actor.id,
@@ -288,6 +297,19 @@ export class ContractRequestsService {
       contractRequest.rejectionReason = dto.rejectionReason?.trim() || null;
 
       const updated = await this.contractRequestsRepository.save(contractRequest, manager);
+
+      // Converter pagamento em crédito (idempotente via UPDATE condicional)
+      const payment = await manager.findOne(Payment, {
+        where: { contractRequestId: contractRequest.id },
+      });
+      if (payment) {
+        await this.companyBalanceService.creditFromPayment(
+          payment.id,
+          BalanceTransactionType.CREDIT_FROM_REJECTION,
+          manager,
+        );
+      }
+
       return this.buildPayload(updated);
     });
   }
@@ -746,8 +768,10 @@ export class ContractRequestsService {
 
   private buildCreatorOfferPayload(contractRequest: ContractRequest) {
     const base = this.buildPayload(contractRequest);
-    const createdAt = contractRequest.createdAt ?? new Date();
-    const expiresAt = new Date(createdAt.getTime() + 48 * 60 * 60 * 1000);
+    // Usar expiresAt do banco se disponível, senão derivar por compatibilidade
+    const expiresAt =
+      contractRequest.expiresAt ??
+      new Date((contractRequest.createdAt ?? new Date()).getTime() + 48 * 60 * 60 * 1000);
     const now = new Date();
     const isExpired =
       contractRequest.status === ContractRequestStatus.PENDING_ACCEPTANCE &&
@@ -768,11 +792,13 @@ export class ContractRequestsService {
       rawRating != null && rawRating > 0 ? rawRating : null;
 
     const statusMap: Record<ContractRequestStatus, string> = {
+      [ContractRequestStatus.PENDING_PAYMENT]: 'PENDING_PAYMENT',
       [ContractRequestStatus.PENDING_ACCEPTANCE]: isExpired ? 'EXPIRED' : 'PENDING',
       [ContractRequestStatus.ACCEPTED]: 'ACCEPTED',
       [ContractRequestStatus.REJECTED]: 'REJECTED',
       [ContractRequestStatus.CANCELLED]: 'CANCELLED',
       [ContractRequestStatus.COMPLETED]: 'COMPLETED',
+      [ContractRequestStatus.EXPIRED]: 'EXPIRED',
     };
 
     return {
@@ -797,8 +823,9 @@ export class ContractRequestsService {
 
     switch (status) {
       case 'PENDING':
+      case ContractRequestStatus.PENDING_PAYMENT:
       case ContractRequestStatus.PENDING_ACCEPTANCE:
-        return [ContractRequestStatus.PENDING_ACCEPTANCE];
+        return [ContractRequestStatus.PENDING_PAYMENT, ContractRequestStatus.PENDING_ACCEPTANCE];
       case 'ACCEPTED':
       case ContractRequestStatus.ACCEPTED:
         return [ContractRequestStatus.ACCEPTED];
@@ -810,7 +837,12 @@ export class ContractRequestsService {
       case 'CANCELLED':
       case ContractRequestStatus.CANCELLED:
       case ContractRequestStatus.REJECTED:
-        return [ContractRequestStatus.CANCELLED, ContractRequestStatus.REJECTED];
+      case ContractRequestStatus.EXPIRED:
+        return [
+          ContractRequestStatus.CANCELLED,
+          ContractRequestStatus.REJECTED,
+          ContractRequestStatus.EXPIRED,
+        ];
       default:
         return undefined;
     }
@@ -822,7 +854,8 @@ export class ContractRequestsService {
 
     if (
       contractRequest.status === ContractRequestStatus.CANCELLED ||
-      contractRequest.status === ContractRequestStatus.REJECTED
+      contractRequest.status === ContractRequestStatus.REJECTED ||
+      contractRequest.status === ContractRequestStatus.EXPIRED
     ) {
       return 'CANCELLED';
     }
@@ -831,7 +864,10 @@ export class ContractRequestsService {
       return 'COMPLETED';
     }
 
-    if (contractRequest.status === ContractRequestStatus.PENDING_ACCEPTANCE) {
+    if (
+      contractRequest.status === ContractRequestStatus.PENDING_ACCEPTANCE ||
+      contractRequest.status === ContractRequestStatus.PENDING_PAYMENT
+    ) {
       return 'PENDING';
     }
 

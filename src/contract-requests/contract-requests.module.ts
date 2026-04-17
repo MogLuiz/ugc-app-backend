@@ -7,6 +7,7 @@ import { PlatformSettingsModule } from '../platform-settings/platform-settings.m
 import { GeocodingModule } from '../geocoding/geocoding.module';
 import { SchedulingModule } from '../scheduling/scheduling.module';
 import { ConversationsModule } from '../conversations/conversations.module';
+import { BillingModule } from '../billing/billing.module';
 import { ContractRequestsController } from './contract-requests.controller';
 import { ContractRequestsService } from './contract-requests.service';
 import { DistanceService } from './services/distance.service';
@@ -23,6 +24,7 @@ import { TransportService } from './services/transport.service';
     GeocodingModule,
     SchedulingModule,
     ConversationsModule,
+    BillingModule,
   ],
   controllers: [ContractRequestsController],
   providers: [ContractRequestsService, DistanceService, TransportService, PricingService],

@@ -12,6 +12,7 @@ import {
 import { ContractRequest } from '../../contract-requests/entities/contract-request.entity';
 import { PaymentStatus } from '../enums/payment-status.enum';
 import { PayoutStatus } from '../enums/payout-status.enum';
+import { SettlementStatus } from '../enums/settlement-status.enum';
 import { CreatorPayout } from './creator-payout.entity';
 
 @Entity('payments')
@@ -77,6 +78,29 @@ export class Payment {
    */
   @Column({ name: 'payout_status', type: 'varchar', length: 30, default: PayoutStatus.NOT_DUE })
   payoutStatus: PayoutStatus;
+
+  /**
+   * Ciclo de vida financeiro do pagamento (ortogonal ao status de gateway).
+   * HELD → aguardando resposta do creator.
+   * APPLIED → creator aceitou, contrato em andamento.
+   * CONVERTED_TO_CREDIT → virou crédito (rejeição ou expiração).
+   * Nullable em pagamentos legados (anteriores a esta feature).
+   */
+  @Column({
+    name: 'settlement_status',
+    type: 'varchar',
+    length: 30,
+    nullable: true,
+    default: null,
+  })
+  settlementStatus: SettlementStatus | null;
+
+  /**
+   * Crédito de saldo aplicado neste pagamento (em centavos).
+   * 0 = nenhum crédito usado. > 0 = parte ou totalidade coberta por saldo.
+   */
+  @Column({ name: 'credit_applied_cents', type: 'int', default: 0 })
+  creditAppliedCents: number;
 
   @Column({ name: 'gateway_name', type: 'varchar', length: 50, default: 'mercado_pago' })
   gatewayName: string;

@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { ContractRequest } from '../../contract-requests/entities/contract-request.entity';
+import { ContractRequestStatus } from '../../common/enums/contract-request-status.enum';
 import { PaymentStatus as ContractPaymentStatus } from '../../common/enums/payment-status.enum';
 import { Payment } from '../entities/payment.entity';
 import { CreatorPayout } from '../entities/creator-payout.entity';
@@ -12,6 +13,7 @@ import {
   PAYMENT_PROVIDER,
   IPaymentProvider,
 } from '../providers/payment-provider.interface';
+import { CompanyBalanceService } from '../../billing/company-balance.service';
 
 function isUniqueViolation(err: unknown): boolean {
   return (
@@ -38,6 +40,7 @@ export class WebhooksService {
     @Inject(PAYMENT_PROVIDER)
     private readonly provider: IPaymentProvider,
     private readonly dataSource: DataSource,
+    private readonly companyBalanceService: CompanyBalanceService,
   ) {}
 
   /**
@@ -177,12 +180,46 @@ export class WebhooksService {
           `CreatorPayout criado: id=${payout.id} creatorUserId=${payout.creatorUserId} amount=${payout.amountCents}`,
         );
 
-        // 5. Atualiza ContractRequest.paymentStatus → PAID
-        await manager.update(
-          ContractRequest,
-          { id: payment.contractRequestId },
-          { paymentStatus: ContractPaymentStatus.PAID },
-        );
+        // 5. Transição de contrato: PENDING_PAYMENT → PENDING_ACCEPTANCE
+        const contract = await manager.findOne(ContractRequest, {
+          where: { id: payment.contractRequestId },
+        });
+        if (contract?.status === ContractRequestStatus.PENDING_PAYMENT) {
+          await manager.update(ContractRequest, { id: contract.id }, {
+            status: ContractRequestStatus.PENDING_ACCEPTANCE,
+            paymentStatus: ContractPaymentStatus.PAID,
+          });
+          this.logger.log(
+            `Contrato ${contract.id} transitado: PENDING_PAYMENT → PENDING_ACCEPTANCE`,
+          );
+        } else {
+          // Contratos já ACCEPTED (oferta aberta) — só atualiza paymentStatus
+          await manager.update(
+            ContractRequest,
+            { id: payment.contractRequestId },
+            { paymentStatus: ContractPaymentStatus.PAID },
+          );
+        }
+
+        // 6. Débito de crédito parcial (com idempotência via CompanyBalanceTransaction)
+        if (payment.creditAppliedCents > 0) {
+          const alreadyDebited = await this.companyBalanceService.isCreditAlreadyDebited(payment.id);
+          if (!alreadyDebited) {
+            await this.companyBalanceService.useCredit(
+              payment.companyUserId,
+              payment.creditAppliedCents,
+              payment.id,
+              manager,
+            );
+            this.logger.log(
+              `Crédito debitado no webhook: paymentId=${payment.id} amount=${payment.creditAppliedCents}`,
+            );
+          } else {
+            this.logger.log(
+              `Crédito já debitado anteriormente (idempotência): paymentId=${payment.id}`,
+            );
+          }
+        }
       }
 
       await manager.save(Payment, payment);

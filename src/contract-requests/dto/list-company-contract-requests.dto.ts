@@ -7,11 +7,13 @@ const COMPANY_CAMPAIGN_FILTER_STATUSES = [
   'IN_PROGRESS',
   'COMPLETED',
   'CANCELLED',
+  ContractRequestStatus.PENDING_PAYMENT,
   ContractRequestStatus.PENDING_ACCEPTANCE,
   ContractRequestStatus.ACCEPTED,
   ContractRequestStatus.REJECTED,
   ContractRequestStatus.CANCELLED,
   ContractRequestStatus.COMPLETED,
+  ContractRequestStatus.EXPIRED,
 ] as const;
 
 export type CompanyCampaignFilterStatus = (typeof COMPANY_CAMPAIGN_FILTER_STATUSES)[number];
