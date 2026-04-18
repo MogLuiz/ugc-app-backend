@@ -1,5 +1,13 @@
 import { plainToInstance } from 'class-transformer';
-import { IsEnum, IsNumber, IsOptional, IsString, Min, validateSync } from 'class-validator';
+import {
+  IsBoolean,
+  IsEnum,
+  IsNumber,
+  IsOptional,
+  IsString,
+  Min,
+  validateSync,
+} from 'class-validator';
 
 enum NodeEnv {
   development = 'development',
@@ -21,9 +29,8 @@ export class EnvValidation {
   @Min(1)
   PORT: number = 3000;
 
-  @IsOptional()
   @IsString()
-  DATABASE_URL: string = '';
+  DATABASE_URL!: string;
 
   @IsString()
   DB_HOST: string = 'localhost';
@@ -41,17 +48,14 @@ export class EnvValidation {
   @IsString()
   DB_DATABASE: string = 'ugc';
 
-  @IsOptional()
   @IsString()
-  SUPABASE_URL: string = '';
+  SUPABASE_URL!: string;
 
-  @IsOptional()
   @IsString()
-  SUPABASE_ANON_KEY: string = '';
+  SUPABASE_ANON_KEY!: string;
 
-  @IsOptional()
   @IsString()
-  SUPABASE_SERVICE_ROLE_KEY: string = '';
+  SUPABASE_SERVICE_ROLE_KEY!: string;
 
   @IsOptional()
   @IsNumber()
@@ -140,8 +144,8 @@ export class EnvValidation {
   SENTRY_DSN: string = '';
 
   @IsOptional()
-  @IsString()
-  SENTRY_ENABLED: string = '';
+  @IsBoolean()
+  SENTRY_ENABLED: boolean = false;
 
   @IsOptional()
   @IsString()
@@ -156,26 +160,27 @@ export class EnvValidation {
   RAILWAY_GIT_COMMIT_SHA: string = '';
 
   // Mercado Pago
-  @IsOptional()
   @IsString()
-  MP_ACCESS_TOKEN: string = '';
+  MP_ACCESS_TOKEN!: string;
 
-  @IsOptional()
   @IsString()
-  MP_PUBLIC_KEY: string = '';
+  MP_PUBLIC_KEY!: string;
 
-  @IsOptional()
   @IsString()
-  MP_WEBHOOK_SECRET: string = '';
+  MP_WEBHOOK_SECRET!: string;
 
   // URLs base para callbacks e webhooks
-  @IsOptional()
   @IsString()
-  API_BASE_URL: string = 'http://localhost:3000';
+  API_BASE_URL!: string;
+
+  @IsString()
+  APP_URL!: string;
 
   @IsOptional()
-  @IsString()
   FRONTEND_BASE_URL: string = 'http://localhost:5173';
+
+  @IsOptional()
+  FRONTEND_URL: string = 'http://localhost:5173';
 
   // Admin interno
   @IsOptional()
@@ -191,7 +196,19 @@ export class EnvValidation {
 }
 
 export function validateEnv(config: Record<string, unknown>): EnvValidation {
-  const validated = plainToInstance(EnvValidation, config, {
+  const normalizedConfig = normalizeEnvConfig(config);
+  const missingRequired = REQUIRED_ENV_VARS.filter((key) =>
+    isMissingEnvValue(normalizedConfig[key]),
+  );
+
+  if (missingRequired.length > 0) {
+    const [firstMissing] = missingRequired;
+    throw new Error(
+      `[CONFIG ERROR] Missing required environment variable: ${firstMissing}`,
+    );
+  }
+
+  const validated = plainToInstance(EnvValidation, normalizedConfig, {
     enableImplicitConversion: true,
   });
 
@@ -200,9 +217,90 @@ export function validateEnv(config: Record<string, unknown>): EnvValidation {
   });
 
   if (errors.length > 0) {
-    const messages = errors.map((e) => Object.values(e.constraints || {}).join(', ')).join('; ');
-    throw new Error(`Config validation failed: ${messages}`);
+    const [firstError] = errors;
+    const field = firstError.property;
+    const [message] = Object.values(firstError.constraints || {});
+    throw new Error(
+      `[CONFIG ERROR] Invalid environment variable ${field}: ${message ?? 'invalid value'}`,
+    );
+  }
+
+  for (const field of URI_ENV_VARS) {
+    const value = normalizedConfig[field];
+    if (typeof value === 'string' && value.trim() !== '' && !isValidUri(value)) {
+      throw new Error(
+        `[CONFIG ERROR] Invalid environment variable ${field}: must be a valid URI`,
+      );
+    }
   }
 
   return validated;
+}
+
+const REQUIRED_ENV_VARS = [
+  'DATABASE_URL',
+  'SUPABASE_URL',
+  'SUPABASE_ANON_KEY',
+  'SUPABASE_SERVICE_ROLE_KEY',
+  'MP_ACCESS_TOKEN',
+  'MP_PUBLIC_KEY',
+  'MP_WEBHOOK_SECRET',
+  'API_BASE_URL',
+  'APP_URL',
+] as const;
+
+const URI_ENV_VARS = [
+  'DATABASE_URL',
+  'SUPABASE_URL',
+  'API_BASE_URL',
+  'APP_URL',
+  'FRONTEND_URL',
+  'FRONTEND_BASE_URL',
+] as const;
+
+function normalizeEnvConfig(
+  config: Record<string, unknown>,
+): Record<string, unknown> {
+  return {
+    ...config,
+    SENTRY_ENABLED: normalizeBoolean(config.SENTRY_ENABLED, false),
+  };
+}
+
+function normalizeBoolean(value: unknown, defaultValue: boolean): unknown {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+
+  if (typeof value !== 'string') {
+    return defaultValue;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  if (normalized === '') {
+    return defaultValue;
+  }
+
+  if (normalized === 'true') {
+    return true;
+  }
+
+  if (normalized === 'false') {
+    return false;
+  }
+
+  return value;
+}
+
+function isMissingEnvValue(value: unknown): boolean {
+  return typeof value !== 'string' || value.trim() === '';
+}
+
+function isValidUri(value: string): boolean {
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol.length > 1;
+  } catch {
+    return false;
+  }
 }

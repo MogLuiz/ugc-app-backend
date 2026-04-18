@@ -1,7 +1,9 @@
 import './instrument';
+import { Logger, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
+
+const logger = new Logger('ConfigBootstrap');
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -21,8 +23,14 @@ async function bootstrap() {
       transformOptions: { enableImplicitConversion: true },
     }),
   );
+  logger.log('[CONFIG] Environment loaded successfully');
+  logger.log('[CONFIG] All required variables present');
   const port = process.env.PORT || 3000;
   await app.listen(port);
 }
 
-bootstrap();
+bootstrap().catch((error: unknown) => {
+  const message = error instanceof Error ? error.message : String(error);
+  logger.error(message);
+  process.exit(1);
+});

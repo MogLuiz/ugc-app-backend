@@ -36,6 +36,10 @@ import { AddPendingPaymentAndExpiredStatuses1767000600000 } from './migrations/1
 config();
 
 const databaseUrl = process.env.DATABASE_URL;
+const databaseUrlSsl =
+  databaseUrl && shouldUseSslForDatabaseUrl(databaseUrl)
+    ? { rejectUnauthorized: false }
+    : false;
 
 export const AppDataSource = new DataSource(
   databaseUrl
@@ -79,7 +83,7 @@ export const AppDataSource = new DataSource(
         ],
         synchronize: false,
         logging: process.env.NODE_ENV === 'development',
-        ssl: { rejectUnauthorized: false },
+        ssl: databaseUrlSsl,
       }
     : {
         type: 'postgres',
@@ -130,3 +134,12 @@ export const AppDataSource = new DataSource(
         }),
       },
 );
+
+function shouldUseSslForDatabaseUrl(value: string): boolean {
+  try {
+    const { hostname } = new URL(value);
+    return !['localhost', '127.0.0.1', '::1'].includes(hostname);
+  } catch {
+    return true;
+  }
+}
