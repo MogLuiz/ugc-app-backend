@@ -1,6 +1,7 @@
 import {
   ForbiddenException,
   Injectable,
+  Logger,
   UnauthorizedException,
 } from '@nestjs/common';
 import { AuthUser } from '../common/interfaces/auth-user.interface';
@@ -12,6 +13,8 @@ import { ContractRequest } from '../contract-requests/entities/contract-request.
 
 @Injectable()
 export class CreatorService {
+  private readonly logger = new Logger(CreatorService.name);
+
   constructor(
     private readonly contractRequestsRepository: ContractRequestsRepository,
     private readonly usersRepository: UsersRepository,
@@ -74,15 +77,20 @@ export class CreatorService {
     if (contractRequest.status !== ContractRequestStatus.PENDING_ACCEPTANCE) {
       return false;
     }
-    const createdAt = contractRequest.createdAt ?? new Date();
-    const expiresAt = new Date(createdAt.getTime() + 48 * 60 * 60 * 1000);
-    return new Date() >= expiresAt;
+
+    const effectiveExpiresAt = this.resolveInviteExpiry(contractRequest);
+    if (!effectiveExpiresAt) {
+      return false;
+    }
+
+    return Date.now() >= effectiveExpiresAt.getTime();
   }
 
   private mapInviteRow(contractRequest: ContractRequest) {
     const companyName = this.getCompanyName(contractRequest);
     const campaignTitle =
       contractRequest.jobType?.name?.trim() || 'Campanha';
+    const effectiveExpiresAt = this.resolveInviteExpiry(contractRequest);
 
     return {
       id: contractRequest.id,
@@ -92,7 +100,24 @@ export class CreatorService {
       payment: contractRequest.totalPrice,
       status: 'PENDING' as const,
       distanceKm: contractRequest.distanceKm ?? null,
+      expiresAt: effectiveExpiresAt?.toISOString() ?? null,
     };
+  }
+
+  private resolveInviteExpiry(contractRequest: ContractRequest): Date | null {
+    if (contractRequest.expiresAt) {
+      return contractRequest.expiresAt;
+    }
+
+    if (contractRequest.createdAt) {
+      return new Date(contractRequest.createdAt.getTime() + 48 * 60 * 60 * 1000);
+    }
+
+    this.logger.warn(
+      `Convite sem expiresAt e sem createdAt; mantendo sem expiração automática. contractId=${contractRequest.id}`,
+    );
+
+    return null;
   }
 
   private mapUpcomingRow(contractRequest: ContractRequest) {
