@@ -97,7 +97,7 @@ export class PaymentsService {
           callbackUrls: {
             success: `${frontendBase}/pagamento/sucesso?paymentId=${existing.id}`,
             failure: `${frontendBase}/pagamento/falhou?paymentId=${existing.id}`,
-            pending: `${frontendBase}/pagamento/pendente?paymentId=${existing.id}`,
+            pending: `${frontendBase}/pagamento/aguardando?paymentId=${existing.id}`,
           },
         });
         existing.externalPreferenceId = intent.preferenceId;
@@ -201,7 +201,7 @@ export class PaymentsService {
       callbackUrls: {
         success: `${frontendBase}/pagamento/sucesso?paymentId=${savedPayment.id}`,
         failure: `${frontendBase}/pagamento/falhou?paymentId=${savedPayment.id}`,
-        pending: `${frontendBase}/pagamento/pendente?paymentId=${savedPayment.id}`,
+        pending: `${frontendBase}/pagamento/aguardando?paymentId=${savedPayment.id}`,
       },
     });
 

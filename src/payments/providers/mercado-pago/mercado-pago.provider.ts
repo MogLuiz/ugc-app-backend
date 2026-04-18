@@ -80,7 +80,6 @@ export class MercadoPagoProvider implements IPaymentProvider {
 
   async processCardPayment(input: ProcessCardPaymentInput): Promise<NormalizedPaymentStatus> {
     const paymentClient = new MpPayment(this.client);
-
     const mpPayment = await paymentClient.create({
       body: {
         transaction_amount: input.transactionAmount,
