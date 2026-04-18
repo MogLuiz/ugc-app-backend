@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  NotFoundException,
   Post,
   UseGuards,
 } from '@nestjs/common';
@@ -38,9 +39,19 @@ export class CompanyBalanceController {
     return this.balanceService.requestRefund(user.id, dto.amountCents, dto.reason ?? null);
   }
 
+  /**
+   * Lista os reembolsos da empresa autenticada.
+   * companyUserId vem do token JWT — nunca aceito via client.
+   */
+  @Get('refund-requests')
+  async getRefundRequests(@CurrentUser() authUser: AuthUser) {
+    const user = await this.resolveUser(authUser);
+    return this.balanceService.listCompanyRefundRequests(user.id);
+  }
+
   private async resolveUser(authUser: AuthUser) {
     const user = await this.userRepo.findOne({ where: { authUserId: authUser.authUserId } });
-    if (!user) throw new Error('Usuário não encontrado');
+    if (!user) throw new NotFoundException('Usuário não encontrado');
     return user;
   }
 }

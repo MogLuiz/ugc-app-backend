@@ -300,6 +300,17 @@ export class PaymentsService {
     };
   }
 
+  async getCompanyPayments(
+    companyUserId: string,
+    status?: PaymentStatus,
+  ): Promise<PaymentResponseDto[]> {
+    const payments = await this.paymentRepo.find({
+      where: { companyUserId, ...(status ? { status } : {}) },
+      order: { createdAt: 'DESC', id: 'DESC' },
+    });
+    return payments.map((p) => this.toResponseDto(p));
+  }
+
   private toResponseDto(payment: Payment): PaymentResponseDto {
     return {
       id: payment.id,
@@ -309,9 +320,11 @@ export class PaymentsService {
       creatorBaseAmountCents: payment.creatorBaseAmountCents,
       transportFeeCents: payment.transportFeeCents,
       creatorNetAmountCents: payment.creatorNetAmountCents,
+      creditAppliedCents: payment.creditAppliedCents,
       currency: payment.currency,
       status: payment.status,
       payoutStatus: payment.payoutStatus,
+      settlementStatus: payment.settlementStatus ?? null,
       gatewayName: payment.gatewayName,
       paymentMethod: payment.paymentMethod,
       installments: payment.installments,

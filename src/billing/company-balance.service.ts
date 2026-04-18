@@ -270,6 +270,17 @@ export class CompanyBalanceService {
   }
 
   /**
+   * Lista reembolsos da empresa autenticada.
+   * companyUserId vem sempre do token — nunca aceito via client.
+   */
+  async listCompanyRefundRequests(companyUserId: string): Promise<RefundRequest[]> {
+    return this.refundRepo.find({
+      where: { companyUserId },
+      order: { createdAt: 'DESC', id: 'DESC' },
+    });
+  }
+
+  /**
    * Lista solicitações de reembolso (admin).
    */
   async listRefundRequests(status?: RefundRequestStatus): Promise<RefundRequest[]> {
