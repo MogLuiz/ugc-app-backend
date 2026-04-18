@@ -1,5 +1,5 @@
-import { CreatorService } from './creator.service';
 import { Controller, Get, UseGuards } from '@nestjs/common';
+import { CreatorService } from './creator.service';
 import { SupabaseAuthGuard } from '../auth/guards/supabase-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { AuthUser } from '../common/interfaces/auth-user.interface';
