@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Put, Query, UseGuards } from '@nestjs/common';
 import { ProfilesService } from './profiles.service';
 import { SupabaseAuthGuard } from '../auth/guards/supabase-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -7,6 +7,7 @@ import { UpdateProfileDto } from './dto/update-profile.dto';
 import { UpdateCreatorProfileDto } from './dto/update-creator-profile.dto';
 import { UpdateCompanyProfileDto } from './dto/update-company-profile.dto';
 import { ListMarketplaceCreatorsDto } from './dto/list-marketplace-creators.dto';
+import { UpdateCreatorPayoutSettingsDto } from './dto/update-creator-payout-settings.dto';
 
 @Controller('profiles')
 @UseGuards(SupabaseAuthGuard)
@@ -56,6 +57,19 @@ export class ProfilesController {
     @Body() dto: UpdateCompanyProfileDto,
   ) {
     return this.profilesService.updateCompanyProfile(user.authUserId, dto);
+  }
+
+  @Get('me/payout-settings')
+  getMyPayoutSettings(@CurrentUser() user: AuthUser) {
+    return this.profilesService.getCreatorPayoutSettings(user.authUserId);
+  }
+
+  @Put('me/payout-settings')
+  updateMyPayoutSettings(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: UpdateCreatorPayoutSettingsDto,
+  ) {
+    return this.profilesService.updateCreatorPayoutSettings(user.authUserId, dto);
   }
 
   @Delete('me/portfolio/media/:mediaId')

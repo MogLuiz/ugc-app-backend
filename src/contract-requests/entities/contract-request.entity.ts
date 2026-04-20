@@ -62,7 +62,7 @@ export class ContractRequest {
     name: 'payment_status',
     type: 'enum',
     enum: PaymentStatus,
-    default: PaymentStatus.PAID,
+    default: PaymentStatus.PENDING,
   })
   paymentStatus: PaymentStatus;
 

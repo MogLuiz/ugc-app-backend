@@ -270,6 +270,7 @@ describe('ContractRequestsService', () => {
     );
 
     expect(result.status).toBe(ContractRequestStatus.PENDING_PAYMENT);
+    expect(result.paymentStatus).toBe(PaymentStatus.PENDING);
     expect(mocks.conversationsService.ensureConversationForContractRequest).not.toHaveBeenCalled();
   });
 
@@ -290,6 +291,7 @@ describe('ContractRequestsService', () => {
     );
 
     const savedPayload = mocks.contractRequestsRepository.createAndSave.mock.calls[0][0];
+    expect(savedPayload.paymentStatus).toBe(PaymentStatus.PENDING);
     expect(savedPayload.platformFeeRateSnapshot).toBe(0);
     expect(savedPayload.openOfferId).toBeNull();
     expect(savedPayload.platformFee).toBe(0);
@@ -322,6 +324,7 @@ describe('ContractRequestsService', () => {
     );
 
     const saved = mocks.contractRequestsRepository.createAndSave.mock.calls[0][0];
+    expect(saved.paymentStatus).toBe(PaymentStatus.PENDING);
     expect(saved.platformFeeRateSnapshot).toBe(0.15);
     expect(saved.platformFee).toBeGreaterThan(0);
     // Empresa paga base + transport (sem adicionar platformFee)
@@ -375,6 +378,7 @@ describe('ContractRequestsService', () => {
     // Deve ter sido salvo com ACCEPTED e openOfferId corretos
     const savedPayload = mocks.contractRequestsRepository.createAndSave.mock.calls[0][0];
     expect(savedPayload.status).toBe(ContractRequestStatus.ACCEPTED);
+    expect(savedPayload.paymentStatus).toBe(PaymentStatus.PENDING);
     expect(savedPayload.openOfferId).toBe('offer-123');
     expect(savedPayload.platformFeeRateSnapshot).toBe(0.10);
     expect(savedPayload.openOfferId).not.toBeNull();
@@ -426,6 +430,7 @@ describe('ContractRequestsService', () => {
     );
 
     const saved = mocks.contractRequestsRepository.createAndSave.mock.calls[0][0];
+    expect(saved.paymentStatus).toBe(PaymentStatus.PENDING);
     // platformFee = 400 * 0.20 = 80
     expect(saved.platformFee).toBe(80);
     // totalPrice = 400 + transportFee (não + 80)
