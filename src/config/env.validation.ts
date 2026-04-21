@@ -73,6 +73,11 @@ export class EnvValidation {
   @IsOptional()
   @IsNumber()
   @Min(1)
+  MAX_PORTFOLIO_UPLOAD_SIZE_MB: number = 200;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
   MAX_PORTFOLIO_IMAGE_SIZE_MB: number = 10;
 
   @IsOptional()
@@ -193,6 +198,53 @@ export class EnvValidation {
   @IsNumber()
   @Min(1)
   INVITE_EXPIRY_HOURS: number = 24;
+}
+
+type ConfigReader = {
+  get<T = unknown>(propertyPath: string): T | undefined;
+};
+
+const BYTES_PER_MB = 1024 * 1024;
+const DEFAULT_PORTFOLIO_UPLOAD_SIZE_MB = 200;
+
+function resolveNumber(value: unknown, fallback: number): number {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+
+  return fallback;
+}
+
+export function getPortfolioUploadMaxSizeMb(config?: ConfigReader): number {
+  return resolveNumber(
+    config?.get<number>('MAX_PORTFOLIO_UPLOAD_SIZE_MB') ??
+      process.env.MAX_PORTFOLIO_UPLOAD_SIZE_MB,
+    DEFAULT_PORTFOLIO_UPLOAD_SIZE_MB,
+  );
+}
+
+export function getPortfolioUploadMaxSizeBytes(config?: ConfigReader): number {
+  return getPortfolioUploadMaxSizeMb(config) * BYTES_PER_MB;
+}
+
+export function formatBytesToMb(bytes: number): string {
+  const mb = bytes / BYTES_PER_MB;
+  return Number.isInteger(mb) ? `${mb} MB` : `${mb.toFixed(1)} MB`;
+}
+
+export function getPortfolioUploadMaxSizeLabel(config?: ConfigReader): string {
+  return formatBytesToMb(getPortfolioUploadMaxSizeBytes(config));
+}
+
+export function getPortfolioUploadLimitExceededMessage(config?: ConfigReader): string {
+  return `O arquivo excede o limite máximo de ${getPortfolioUploadMaxSizeLabel(config)}`;
 }
 
 export function validateEnv(config: Record<string, unknown>): EnvValidation {

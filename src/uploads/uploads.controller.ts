@@ -3,6 +3,7 @@ import {
   Controller,
   Post,
   UploadedFile,
+  UseFilters,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
@@ -14,6 +15,8 @@ import { SupabaseAuthGuard } from '../auth/guards/supabase-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { AuthUser } from '../common/interfaces/auth-user.interface';
 import { PortfolioService } from '../portfolio/portfolio.service';
+import { getPortfolioUploadMaxSizeBytes } from '../config/env.validation';
+import { PortfolioUploadExceptionFilter } from './portfolio-upload.exception-filter';
 
 @Controller('uploads')
 @UseGuards(SupabaseAuthGuard)
@@ -52,8 +55,11 @@ export class UploadsController {
   }
 
   @Post('portfolio-media')
+  @UseFilters(new PortfolioUploadExceptionFilter())
   @UseInterceptors(
-    FileInterceptor('file', { limits: { fileSize: 50 * 1024 * 1024 } }),
+    FileInterceptor('file', {
+      limits: { fileSize: getPortfolioUploadMaxSizeBytes() },
+    }),
   )
   async uploadPortfolioMedia(
     @CurrentUser() user: AuthUser,

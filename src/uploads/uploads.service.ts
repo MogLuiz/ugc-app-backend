@@ -2,6 +2,10 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { PortfolioMediaType } from '../portfolio/entities/portfolio-media-type.enum';
+import {
+  getPortfolioUploadLimitExceededMessage,
+  getPortfolioUploadMaxSizeBytes,
+} from '../config/env.validation';
 
 const ALLOWED_MIME = ['image/jpeg', 'image/png', 'image/webp'];
 const MIME_EXT: Record<string, string> = {
@@ -110,13 +114,12 @@ export class UploadsService {
       throw new BadRequestException('Tipo de mídia não permitido para portfólio');
     }
 
-    const maxMb = isImage
-      ? this.configService.get<number>('MAX_PORTFOLIO_IMAGE_SIZE_MB') ?? 10
-      : this.configService.get<number>('MAX_PORTFOLIO_VIDEO_SIZE_MB') ?? 50;
-    const maxBytes = maxMb * 1024 * 1024;
+    const maxBytes = getPortfolioUploadMaxSizeBytes(this.configService);
 
     if (buffer.length > maxBytes) {
-      throw new BadRequestException(`Arquivo muito grande. Máximo: ${maxMb}MB`);
+      throw new BadRequestException(
+        getPortfolioUploadLimitExceededMessage(this.configService),
+      );
     }
 
     const ext = MIME_EXT[mimetype] ?? (isVideo ? 'mp4' : 'jpg');
