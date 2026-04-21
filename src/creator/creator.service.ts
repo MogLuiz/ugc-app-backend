@@ -25,7 +25,7 @@ export class CreatorService {
     const aggregates =
       await this.contractRequestsRepository.getCreatorDashboardAggregates(creator.id);
 
-    const ratingRaw = creator.profile?.rating;
+    const ratingRaw = creator.profile?.averageRating;
     const averageRating =
       ratingRaw != null && Number(ratingRaw) > 0 ? Number(ratingRaw) : null;
 

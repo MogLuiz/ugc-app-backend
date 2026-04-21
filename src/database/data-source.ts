@@ -32,6 +32,9 @@ import { AddBillingTables1767000300000 } from './migrations/1767000300000-AddBil
 import { AddPaymentSettlementAndCredit1767000400000 } from './migrations/1767000400000-AddPaymentSettlementAndCredit';
 import { AddContractExpiresAt1767000500000 } from './migrations/1767000500000-AddContractExpiresAt';
 import { AddPendingPaymentAndExpiredStatuses1767000600000 } from './migrations/1767000600000-AddPendingPaymentAndExpiredStatuses';
+import { AddPostJobCompletionFields1767000700000 } from './migrations/1767000700000-AddPostJobCompletionFields';
+import { AddReviewsTable1767000800000 } from './migrations/1767000800000-AddReviewsTable';
+import { MigrateProfileRatingToAverageRating1767000900000 } from './migrations/1767000900000-MigrateProfileRatingToAverageRating';
 
 config();
 
@@ -80,6 +83,9 @@ export const AppDataSource = new DataSource(
           AddPaymentSettlementAndCredit1767000400000,
           AddContractExpiresAt1767000500000,
           AddPendingPaymentAndExpiredStatuses1767000600000,
+          AddPostJobCompletionFields1767000700000,
+          AddReviewsTable1767000800000,
+          MigrateProfileRatingToAverageRating1767000900000,
         ],
         synchronize: false,
         logging: process.env.NODE_ENV === 'development',
@@ -126,6 +132,9 @@ export const AppDataSource = new DataSource(
           AddPaymentSettlementAndCredit1767000400000,
           AddContractExpiresAt1767000500000,
           AddPendingPaymentAndExpiredStatuses1767000600000,
+          AddPostJobCompletionFields1767000700000,
+          AddReviewsTable1767000800000,
+          MigrateProfileRatingToAverageRating1767000900000,
         ],
         synchronize: false,
         logging: process.env.NODE_ENV === 'development',

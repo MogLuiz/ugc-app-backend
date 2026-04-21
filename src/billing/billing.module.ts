@@ -12,6 +12,7 @@ import { CompanyBalanceService } from './company-balance.service';
 import { CompanyBalanceController } from './company-balance.controller';
 import { AdminRefundController } from './admin-refund.controller';
 import { InviteExpirationService } from './invite-expiration.service';
+import { JobCompletionService } from './job-completion.service';
 import { InternalAdminGuard } from '../payments/guards/internal-admin.guard';
 
 @Module({
@@ -28,7 +29,7 @@ import { InternalAdminGuard } from '../payments/guards/internal-admin.guard';
     AuthModule,
   ],
   controllers: [CompanyBalanceController, AdminRefundController],
-  providers: [CompanyBalanceService, InviteExpirationService, InternalAdminGuard],
+  providers: [CompanyBalanceService, InviteExpirationService, JobCompletionService, InternalAdminGuard],
   exports: [CompanyBalanceService],
 })
 export class BillingModule {}

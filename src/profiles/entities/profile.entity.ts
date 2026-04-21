@@ -28,6 +28,7 @@ export class Profile {
   photoUrl: string | null;
 
   @Column({
+    name: 'average_rating',
     type: 'decimal',
     precision: 3,
     scale: 2,
@@ -37,7 +38,10 @@ export class Profile {
       from: (value: string) => parseFloat(value),
     },
   })
-  rating: number;
+  averageRating: number;
+
+  @Column({ name: 'review_count', type: 'int', default: 0 })
+  reviewCount: number;
 
   @Column({ name: 'address_street', type: 'varchar', length: 255, nullable: true })
   addressStreet: string | null;

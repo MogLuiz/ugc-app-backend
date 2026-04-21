@@ -146,7 +146,7 @@ export class UsersService {
             birthDate: user.profile.birthDate,
             gender: user.profile.gender,
             photoUrl: user.profile.photoUrl,
-            rating: user.profile.rating,
+            rating: user.profile.averageRating,
             addressStreet: user.profile.addressStreet,
             addressNumber: user.profile.addressNumber,
             addressCity: user.profile.addressCity,

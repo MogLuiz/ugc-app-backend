@@ -16,6 +16,7 @@ import { PreviewContractRequestDto } from './dto/preview-contract-request.dto';
 import { CreateContractRequestDto } from './dto/create-contract-request.dto';
 import { ListCompanyContractRequestsDto } from './dto/list-company-contract-requests.dto';
 import { RejectContractRequestDto } from './dto/reject-contract-request.dto';
+import { DisputeCompletionDto } from './dto/dispute-completion.dto';
 import { ContractRequestStatus } from '../common/enums/contract-request-status.enum';
 
 @Controller('contract-requests')
@@ -84,5 +85,24 @@ export class ContractRequestsController {
   @Patch(':id/complete')
   async complete(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.contractRequestsService.complete(user, id);
+  }
+
+  @Get(':id')
+  async findOne(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.contractRequestsService.findOneForParticipant(user, id);
+  }
+
+  @Patch(':id/confirm-completion')
+  async confirmCompletion(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.contractRequestsService.confirmCompletion(user, id);
+  }
+
+  @Patch(':id/dispute-completion')
+  async disputeCompletion(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body() dto: DisputeCompletionDto,
+  ) {
+    return this.contractRequestsService.disputeCompletion(user, id, dto);
   }
 }

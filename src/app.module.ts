@@ -22,6 +22,7 @@ import { ReferralsModule } from './referrals/referrals.module';
 import { OpenOffersModule } from './open-offers/open-offers.module';
 import { PaymentsModule } from './payments/payments.module';
 import { BillingModule } from './billing/billing.module';
+import { ReviewsModule } from './reviews/reviews.module';
 
 @Module({
   imports: [
@@ -44,6 +45,7 @@ import { BillingModule } from './billing/billing.module';
     OpenOffersModule,
     PaymentsModule,
     BillingModule,
+    ReviewsModule,
     UploadsModule,
     HealthModule,
   ],

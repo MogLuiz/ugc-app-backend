@@ -213,6 +213,43 @@ export class ContractRequest {
   @Column({ name: 'expires_at', type: 'timestamptz', nullable: true })
   expiresAt: Date | null;
 
+  // ─── Campos de confirmação bilateral de conclusão ────────────────────────────
+
+  /** Quando o creator confirmou que o serviço foi realizado. */
+  @Column({ name: 'creator_confirmed_completed_at', type: 'timestamptz', nullable: true })
+  creatorConfirmedCompletedAt: Date | null;
+
+  /** Quando a empresa confirmou que o serviço foi realizado. */
+  @Column({ name: 'company_confirmed_completed_at', type: 'timestamptz', nullable: true })
+  companyConfirmedCompletedAt: Date | null;
+
+  /**
+   * Prazo de 48h para o lado que ainda não confirmou reagir após a primeira confirmação.
+   * Null enquanto nenhuma das partes tiver confirmado.
+   * Quando expirado com ≥1 confirmação, o cron auto-conclui o contrato.
+   */
+  @Column({ name: 'contest_deadline_at', type: 'timestamptz', nullable: true })
+  contestDeadlineAt: Date | null;
+
+  /** Motivo da disputa de conclusão (quando status = COMPLETION_DISPUTE). */
+  @Column({ name: 'completion_dispute_reason', type: 'text', nullable: true })
+  completionDisputeReason: string | null;
+
+  /** Quando a disputa de conclusão foi aberta. */
+  @Column({ name: 'completion_disputed_at', type: 'timestamptz', nullable: true })
+  completionDisputedAt: Date | null;
+
+  /** Usuário que abriu a disputa de conclusão. */
+  @Column({ name: 'completion_disputed_by_user_id', type: 'uuid', nullable: true })
+  completionDisputedByUserId: string | null;
+
+  /**
+   * Quando o contrato entrou em AWAITING_COMPLETION_CONFIRMATION.
+   * Útil para dashboards de SLA e triagem de contratos travados.
+   */
+  @Column({ name: 'completion_phase_entered_at', type: 'timestamptz', nullable: true })
+  completionPhaseEnteredAt: Date | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

@@ -28,6 +28,7 @@ import { PaymentProviderEvent } from '../payments/entities/payment-provider-even
 import { CompanyBalance } from '../billing/entities/company-balance.entity';
 import { CompanyBalanceTransaction } from '../billing/entities/company-balance-transaction.entity';
 import { RefundRequest } from '../billing/entities/refund-request.entity';
+import { Review } from '../reviews/entities/review.entity';
 
 @Module({
   imports: [
@@ -70,6 +71,7 @@ import { RefundRequest } from '../billing/entities/refund-request.entity';
               CompanyBalance,
               CompanyBalanceTransaction,
               RefundRequest,
+              Review,
             ],
             synchronize: false,
             logging: configService.get<string>('NODE_ENV') === 'development',
@@ -110,13 +112,14 @@ import { RefundRequest } from '../billing/entities/refund-request.entity';
             Payment,
             CreatorPayout,
             PaymentProviderEvent,
-            CompanyBalance,
-            CompanyBalanceTransaction,
-            RefundRequest,
-          ],
-          synchronize: false,
-          logging: configService.get<string>('NODE_ENV') === 'development',
-          ...(isSupabase && {
+              CompanyBalance,
+              CompanyBalanceTransaction,
+              RefundRequest,
+              Review,
+            ],
+            synchronize: false,
+            logging: configService.get<string>('NODE_ENV') === 'development',
+            ...(isSupabase && {
             ssl: { rejectUnauthorized: false },
           }),
         };

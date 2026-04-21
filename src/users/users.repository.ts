@@ -159,7 +159,7 @@ export class UsersRepository {
       .addSelect('profile.name', 'name')
       .addSelect('profile.photo_url', 'avatarUrl')
       .addSelect('profile.photo_url', 'coverImageUrl')
-      .addSelect('profile.rating', 'rating')
+      .addSelect('profile.average_rating', 'rating')
       .addSelect('profile.bio', 'bio')
       .addSelect('profile.address_city', 'addressCity')
       .addSelect('profile.address_state', 'addressState')
@@ -215,13 +215,13 @@ export class UsersRepository {
       .addGroupBy('creatorProfile.user_id');
 
     if (params.sortBy === 'avaliacao') {
-      query.orderBy('profile.rating', 'DESC', 'NULLS LAST');
+      query.orderBy('profile.average_rating', 'DESC', 'NULLS LAST');
       query.addOrderBy('profile.name', 'ASC');
     } else if (params.sortBy === 'preco') {
       query.orderBy('minPrice', 'ASC', 'NULLS LAST');
       query.addOrderBy('profile.name', 'ASC');
     } else {
-      query.orderBy('profile.rating', 'DESC', 'NULLS LAST');
+      query.orderBy('profile.average_rating', 'DESC', 'NULLS LAST');
       query.addOrderBy('profile.name', 'ASC');
     }
 
@@ -305,7 +305,7 @@ export class UsersRepository {
       .addSelect('profile.name', 'name')
       .addSelect('profile.photo_url', 'avatarUrl')
       .addSelect('profile.photo_url', 'coverImageUrl')
-      .addSelect('profile.rating', 'rating')
+      .addSelect('profile.average_rating', 'rating')
       .addSelect('profile.bio', 'bio')
       .addSelect('profile.address_city', 'addressCity')
       .addSelect('profile.address_state', 'addressState')

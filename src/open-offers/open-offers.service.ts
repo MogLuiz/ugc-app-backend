@@ -150,7 +150,7 @@ export class OpenOffersService {
           id: app.creatorUser?.id,
           name: app.creatorUser?.profile?.name ?? null,
           avatarUrl: app.creatorUser?.profile?.photoUrl ?? null,
-          rating: app.creatorUser?.profile?.rating ?? null,
+          rating: app.creatorUser?.profile?.averageRating ?? null,
         },
       })),
     };

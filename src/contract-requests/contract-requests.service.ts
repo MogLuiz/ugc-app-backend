@@ -32,6 +32,7 @@ import {
   ListCompanyContractRequestsDto,
 } from './dto/list-company-contract-requests.dto';
 import { RejectContractRequestDto } from './dto/reject-contract-request.dto';
+import { DisputeCompletionDto } from './dto/dispute-completion.dto';
 import { ContractRequest } from './entities/contract-request.entity';
 import { ConversationsService } from '../conversations/conversations.service';
 import {
@@ -231,6 +232,25 @@ export class ContractRequestsService {
     return payloads.filter((p) => p.status !== 'EXPIRED');
   }
 
+  /**
+   * Retorna o detalhe de uma contratação para um dos participantes (creator ou empresa).
+   * Retorna 403 se o usuário não for participante.
+   */
+  async findOneForParticipant(user: AuthUser, contractRequestId: string) {
+    const actor = await this.requireAuthenticatedUser(user.authUserId);
+    const contractRequest = await this.contractRequestsRepository.findById(contractRequestId);
+
+    if (!contractRequest) {
+      throw new NotFoundException('Contratação não encontrada');
+    }
+
+    if (actor.id !== contractRequest.creatorUserId && actor.id !== contractRequest.companyUserId) {
+      throw new ForbiddenException('Você não tem acesso a esta contratação');
+    }
+
+    return this.buildPayload(contractRequest);
+  }
+
   async accept(user: AuthUser, contractRequestId: string) {
     return this.dataSource.transaction(async (manager) => {
       const actor = await this.findActorForUpdate(user.authUserId, manager);
@@ -386,6 +406,122 @@ export class ContractRequestsService {
     this.eventEmitter.emit(CONTRACT_REQUEST_COMPLETED_EVENT, event);
 
     return payload;
+  }
+
+  /**
+   * Confirmação bilateral de conclusão do serviço.
+   * Creator e empresa confirmam de forma independente; quando ambos confirmam, o contrato
+   * move para COMPLETED e o evento de conclusão é emitido.
+   * Idempotente: segunda chamada do mesmo lado é no-op.
+   * Não libera efeitos financeiros diretamente — apenas COMPLETED os libera via evento.
+   */
+  async confirmCompletion(user: AuthUser, contractRequestId: string) {
+    const CONTEST_DEADLINE_HOURS = 48;
+
+    const { payload, event } = await this.dataSource.transaction(async (manager) => {
+      const actor = await this.findActorForUpdate(user.authUserId, manager);
+      const contractRequest = await this.getContractRequestForUpdate(contractRequestId, manager);
+
+      if (actor.id !== contractRequest.creatorUserId && actor.id !== contractRequest.companyUserId) {
+        throw new ForbiddenException(
+          'Você não pode confirmar conclusão de uma contratação da qual não faz parte',
+        );
+      }
+
+      if (contractRequest.status !== ContractRequestStatus.AWAITING_COMPLETION_CONFIRMATION) {
+        throw new ConflictException(
+          `Não é possível confirmar conclusão de uma contratação com status ${contractRequest.status}`,
+        );
+      }
+
+      const isCreator = actor.id === contractRequest.creatorUserId;
+      const alreadyConfirmed = isCreator
+        ? contractRequest.creatorConfirmedCompletedAt !== null
+        : contractRequest.companyConfirmedCompletedAt !== null;
+
+      if (alreadyConfirmed) {
+        return { payload: this.buildPayload(contractRequest), event: null };
+      }
+
+      const now = new Date();
+
+      if (isCreator) {
+        contractRequest.creatorConfirmedCompletedAt = now;
+      } else {
+        contractRequest.companyConfirmedCompletedAt = now;
+      }
+
+      if (contractRequest.contestDeadlineAt === null) {
+        contractRequest.contestDeadlineAt = new Date(
+          now.getTime() + CONTEST_DEADLINE_HOURS * 60 * 60 * 1000,
+        );
+      }
+
+      let completedEvent: ContractRequestCompletedEvent | null = null;
+
+      if (
+        contractRequest.creatorConfirmedCompletedAt !== null &&
+        contractRequest.companyConfirmedCompletedAt !== null
+      ) {
+        contractRequest.status = ContractRequestStatus.COMPLETED;
+        contractRequest.completedAt = now;
+        completedEvent = {
+          contractRequestId: contractRequest.id,
+          creatorUserId: contractRequest.creatorUserId,
+          companyUserId: contractRequest.companyUserId,
+          creatorBasePrice: contractRequest.creatorBasePrice,
+          totalPrice: contractRequest.totalPrice,
+          currency: contractRequest.currency,
+          completedAt: now,
+        };
+      }
+
+      const updated = await this.contractRequestsRepository.save(contractRequest, manager);
+      return { payload: this.buildPayload(updated), event: completedEvent };
+    });
+
+    if (event) {
+      this.eventEmitter.emit(CONTRACT_REQUEST_COMPLETED_EVENT, event);
+    }
+
+    return payload;
+  }
+
+  /**
+   * Abre disputa de conclusão do serviço.
+   * Registra quem abriu, quando e o motivo. Move para COMPLETION_DISPUTE,
+   * bloqueando avaliações até resolução por admin.
+   */
+  async disputeCompletion(
+    user: AuthUser,
+    contractRequestId: string,
+    dto: DisputeCompletionDto,
+  ) {
+    return this.dataSource.transaction(async (manager) => {
+      const actor = await this.findActorForUpdate(user.authUserId, manager);
+      const contractRequest = await this.getContractRequestForUpdate(contractRequestId, manager);
+
+      if (actor.id !== contractRequest.creatorUserId && actor.id !== contractRequest.companyUserId) {
+        throw new ForbiddenException(
+          'Você não pode disputar conclusão de uma contratação da qual não faz parte',
+        );
+      }
+
+      if (contractRequest.status !== ContractRequestStatus.AWAITING_COMPLETION_CONFIRMATION) {
+        throw new ConflictException(
+          `Não é possível abrir disputa em uma contratação com status ${contractRequest.status}`,
+        );
+      }
+
+      const now = new Date();
+      contractRequest.status = ContractRequestStatus.COMPLETION_DISPUTE;
+      contractRequest.completionDisputeReason = dto.reason;
+      contractRequest.completionDisputedAt = now;
+      contractRequest.completionDisputedByUserId = actor.id;
+
+      const updated = await this.contractRequestsRepository.save(contractRequest, manager);
+      return this.buildPayload(updated);
+    });
   }
 
   /**
@@ -713,6 +849,13 @@ export class ContractRequestsService {
       rejectionReason: contractRequest.rejectionReason,
       openOfferId: contractRequest.openOfferId,
       completedAt: contractRequest.completedAt?.toISOString() ?? null,
+      creatorConfirmedCompletedAt: contractRequest.creatorConfirmedCompletedAt?.toISOString() ?? null,
+      companyConfirmedCompletedAt: contractRequest.companyConfirmedCompletedAt?.toISOString() ?? null,
+      contestDeadlineAt: contractRequest.contestDeadlineAt?.toISOString() ?? null,
+      completionDisputeReason: contractRequest.completionDisputeReason ?? null,
+      completionDisputedAt: contractRequest.completionDisputedAt?.toISOString() ?? null,
+      completionDisputedByUserId: contractRequest.completionDisputedByUserId ?? null,
+      completionPhaseEnteredAt: contractRequest.completionPhaseEnteredAt?.toISOString() ?? null,
       createdAt: contractRequest.createdAt?.toISOString(),
       updatedAt: contractRequest.updatedAt?.toISOString(),
     };
@@ -724,7 +867,7 @@ export class ContractRequestsService {
     const startsAt = contractRequest.startsAt;
     const acceptedAt = this.resolveAcceptedAt(contractRequest, status);
     const { city, state } = this.extractCityState(contractRequest.jobFormattedAddress, contractRequest.jobAddress);
-    const creatorRatingRaw = contractRequest.creatorUser?.profile?.rating;
+    const creatorRatingRaw = contractRequest.creatorUser?.profile?.averageRating;
     const creatorRating =
       creatorRatingRaw != null && creatorRatingRaw > 0 ? creatorRatingRaw : null;
     const jobTitle = contractRequest.jobType?.name?.trim() || 'Campanha';
@@ -787,7 +930,7 @@ export class ContractRequestsService {
       companyUser?.profile?.name ??
       'Empresa';
     const companyLogoUrl = companyUser?.profile?.photoUrl ?? null;
-    const rawRating = companyUser?.profile?.rating;
+    const rawRating = companyUser?.profile?.averageRating;
     const companyRating =
       rawRating != null && rawRating > 0 ? rawRating : null;
 
@@ -799,6 +942,8 @@ export class ContractRequestsService {
       [ContractRequestStatus.CANCELLED]: 'CANCELLED',
       [ContractRequestStatus.COMPLETED]: 'COMPLETED',
       [ContractRequestStatus.EXPIRED]: 'EXPIRED',
+      [ContractRequestStatus.AWAITING_COMPLETION_CONFIRMATION]: 'AWAITING_COMPLETION_CONFIRMATION',
+      [ContractRequestStatus.COMPLETION_DISPUTE]: 'COMPLETION_DISPUTE',
     };
 
     return {
@@ -881,6 +1026,13 @@ export class ContractRequestsService {
       }
 
       return 'ACCEPTED';
+    }
+
+    if (
+      contractRequest.status === ContractRequestStatus.AWAITING_COMPLETION_CONFIRMATION ||
+      contractRequest.status === ContractRequestStatus.COMPLETION_DISPUTE
+    ) {
+      return 'IN_PROGRESS';
     }
 
     return 'PENDING';
