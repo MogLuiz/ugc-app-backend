@@ -185,6 +185,25 @@ export class ProfilesService {
     }
 
     Object.assign(company, dto);
+
+    if ('websiteUrl' in dto) {
+      company.websiteUrl = this.normalizeCompanyWebsiteUrl(dto.websiteUrl);
+    }
+
+    if ('instagramUsername' in dto) {
+      company.instagramUsername = this.normalizeCompanySocialHandle(
+        dto.instagramUsername,
+        'instagram',
+      );
+    }
+
+    if ('tiktokUsername' in dto) {
+      company.tiktokUsername = this.normalizeCompanySocialHandle(
+        dto.tiktokUsername,
+        'tiktok',
+      );
+    }
+
     await this.companyProfileRepo.save(company);
 
     return this.getMe(authUserId);
@@ -606,6 +625,73 @@ export class ProfilesService {
     }
 
     return 'relevancia';
+  }
+
+  private normalizeCompanyWebsiteUrl(value?: string | null): string | null {
+    const trimmed = value?.trim();
+    if (!trimmed) {
+      return null;
+    }
+
+    let parsed: URL;
+    try {
+      parsed = new URL(trimmed);
+    } catch {
+      throw new BadRequestException('websiteUrl deve ser uma URL válida com https://');
+    }
+
+    if (parsed.protocol !== 'https:') {
+      throw new BadRequestException('websiteUrl deve usar https://');
+    }
+
+    return parsed.toString();
+  }
+
+  private normalizeCompanySocialHandle(
+    value: string | null | undefined,
+    platform: 'instagram' | 'tiktok',
+  ): string | null {
+    const trimmed = value?.trim();
+    if (!trimmed) {
+      return null;
+    }
+
+    const directHandle = trimmed.replace(/^@/, '');
+    if (!trimmed.includes('://')) {
+      this.assertValidCompanySocialHandle(directHandle, platform);
+      return directHandle;
+    }
+
+    let parsed: URL;
+    try {
+      parsed = new URL(trimmed);
+    } catch {
+      throw new BadRequestException(`${platform} deve ser um @handle ou URL válida`);
+    }
+
+    const hostname = parsed.hostname.replace(/^www\./, '').toLowerCase();
+    const allowedHosts =
+      platform === 'instagram'
+        ? new Set(['instagram.com'])
+        : new Set(['tiktok.com', 'vm.tiktok.com', 'm.tiktok.com']);
+
+    if (!allowedHosts.has(hostname)) {
+      throw new BadRequestException(`${platform} deve ser um @handle ou URL válida`);
+    }
+
+    const [firstSegment] = parsed.pathname.split('/').filter(Boolean);
+    const normalizedHandle = firstSegment?.replace(/^@/, '') ?? '';
+    this.assertValidCompanySocialHandle(normalizedHandle, platform);
+    return normalizedHandle;
+  }
+
+  private assertValidCompanySocialHandle(
+    value: string,
+    platform: 'instagram' | 'tiktok',
+  ) {
+    if (!/^[A-Za-z0-9._-]{1,100}$/.test(value)) {
+      throw new BadRequestException(`${platform} deve ser um @handle ou URL válida`);
+    }
   }
 
   private getWorkingHours(
