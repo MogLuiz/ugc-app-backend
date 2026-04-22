@@ -238,7 +238,8 @@ export class ContractRequestsService {
    */
   async findOneForParticipant(user: AuthUser, contractRequestId: string) {
     const actor = await this.requireAuthenticatedUser(user.authUserId);
-    const contractRequest = await this.contractRequestsRepository.findById(contractRequestId);
+    const contractRequest =
+      await this.contractRequestsRepository.findByIdWithParticipantRelations(contractRequestId);
 
     if (!contractRequest) {
       throw new NotFoundException('Contratação não encontrada');
@@ -248,7 +249,14 @@ export class ContractRequestsService {
       throw new ForbiddenException('Você não tem acesso a esta contratação');
     }
 
-    return this.buildPayload(contractRequest);
+    if (actor.role === UserRole.CREATOR) {
+      return this.buildCreatorOfferPayload(contractRequest);
+    }
+    if (actor.role === UserRole.COMPANY) {
+      return this.buildCompanyCampaignPayload(contractRequest);
+    }
+
+    throw new ForbiddenException('Você não tem acesso a esta contratação');
   }
 
   async accept(user: AuthUser, contractRequestId: string) {
@@ -946,12 +954,16 @@ export class ContractRequestsService {
       [ContractRequestStatus.COMPLETION_DISPUTE]: 'COMPLETION_DISPUTE',
     };
 
+    const rawReviewCount = companyUser?.profile?.reviewCount;
+    const companyReviewCount = rawReviewCount != null ? rawReviewCount : null;
+
     return {
       ...base,
       status: statusMap[contractRequest.status],
       companyName,
       companyLogoUrl,
       companyRating,
+      companyReviewCount,
       jobTypeName: contractRequest.jobType?.name ?? null,
       expiresSoon,
       expiresAt: expiresAt.toISOString(),

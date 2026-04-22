@@ -30,6 +30,23 @@ export class ContractRequestsRepository {
     });
   }
 
+  /**
+   * Detalhe para participantes: mesmas relações usadas em payload de listagem (creator/company).
+   */
+  async findByIdWithParticipantRelations(id: string): Promise<ContractRequest | null> {
+    return this.repo.findOne({
+      where: { id },
+      relations: [
+        'jobType',
+        'companyUser',
+        'companyUser.profile',
+        'companyUser.companyProfile',
+        'creatorUser',
+        'creatorUser.profile',
+      ],
+    });
+  }
+
   async findByIdForUpdate(
     id: string,
     manager: EntityManager,
@@ -196,16 +213,27 @@ export class ContractRequestsRepository {
     creatorUserId: string,
     status: ContractRequestStatus,
   ): Promise<ContractRequest[]> {
-    return this.repo
+    const qb = this.repo
       .createQueryBuilder('contractRequest')
       .leftJoinAndSelect('contractRequest.jobType', 'jobType')
       .leftJoinAndSelect('contractRequest.companyUser', 'companyUser')
       .leftJoinAndSelect('companyUser.profile', 'companyUserProfile')
       .leftJoinAndSelect('companyUser.companyProfile', 'companyUserCompanyProfile')
-      .where('contractRequest.creator_user_id = :creatorUserId', { creatorUserId })
-      .andWhere('contractRequest.status = :status', { status })
-      .orderBy('contractRequest.startsAt', 'DESC')
-      .getMany();
+      .where('contractRequest.creator_user_id = :creatorUserId', { creatorUserId });
+
+    if (status === ContractRequestStatus.ACCEPTED) {
+      qb.andWhere('contractRequest.status IN (:...acceptedFamily)', {
+        acceptedFamily: [
+          ContractRequestStatus.ACCEPTED,
+          ContractRequestStatus.AWAITING_COMPLETION_CONFIRMATION,
+          ContractRequestStatus.COMPLETION_DISPUTE,
+        ],
+      });
+    } else {
+      qb.andWhere('contractRequest.status = :status', { status });
+    }
+
+    return qb.orderBy('contractRequest.startsAt', 'DESC').getMany();
   }
 
   async save(
