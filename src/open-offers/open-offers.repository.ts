@@ -86,6 +86,27 @@ export class OpenOffersRepository {
   }
 
   /**
+   * Retorna todas as open offers da empresa sem paginação.
+   * Decisão intencional para v1 do hub — ver nota de escala no plano.
+   */
+  async listAllByCompany(params: {
+    companyUserId: string;
+    statuses?: OpenOfferStatus[];
+  }): Promise<OpenOffer[]> {
+    const qb = this.offerRepo
+      .createQueryBuilder('offer')
+      .leftJoinAndSelect('offer.jobType', 'jobType')
+      .where('offer.companyUserId = :companyUserId', { companyUserId: params.companyUserId })
+      .orderBy('offer.createdAt', 'DESC');
+
+    if (params.statuses?.length) {
+      qb.andWhere('offer.status IN (:...statuses)', { statuses: params.statuses });
+    }
+
+    return qb.getMany();
+  }
+
+  /**
    * Lista ofertas OPEN não expiradas dentro do raio do creator.
    * Usa Haversine inline — PostGIS fora de escopo do MVP.
    */
