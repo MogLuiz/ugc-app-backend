@@ -53,6 +53,7 @@ export interface CreatorHubItem {
   effectiveExpiresAt: string | null;
   expiresSoon: boolean;
   openOfferId: string | null;
+  locationDisplay: string | null;
 
   primaryAction: CreatorHubPrimaryAction;
   actionRequired: boolean;

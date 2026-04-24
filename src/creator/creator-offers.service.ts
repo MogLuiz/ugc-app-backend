@@ -256,6 +256,7 @@ export class CreatorOffersService {
       effectiveExpiresAt: effectiveExpiresAt?.toISOString() ?? null,
       expiresSoon: this.resolveExpiresSoon(effectiveExpiresAt, displayStatus, now),
       openOfferId: contract.openOfferId ?? null,
+      locationDisplay: this.extractLocationDisplay(contract.jobFormattedAddress, contract.jobAddress),
 
       primaryAction,
       actionRequired: primaryAction !== CreatorHubPrimaryAction.VIEW,
@@ -306,6 +307,7 @@ export class CreatorOffersService {
       effectiveExpiresAt: offer?.expiresAt?.toISOString() ?? null,
       expiresSoon: false,
       openOfferId: app.openOfferId ?? null,
+      locationDisplay: null,
 
       primaryAction: CreatorHubPrimaryAction.VIEW,
       actionRequired: false,
@@ -412,6 +414,38 @@ export class CreatorOffersService {
     const bT = b.finalizedAt ? new Date(b.finalizedAt).getTime() : 0;
     return bT - aT;
   };
+
+  private extractLocationDisplay(
+    formattedAddress: string | null,
+    fallbackAddress: string,
+  ): string | null {
+    const source = (formattedAddress || fallbackAddress || '').trim();
+    if (!source) return null;
+
+    const parts = source.split(',').map((p) => p.trim()).filter(Boolean);
+    if (!parts.length) return null;
+
+    let state: string | null = null;
+    let city: string | null = null;
+
+    for (let i = parts.length - 1; i >= 0; i -= 1) {
+      const upper = parts[i].toUpperCase();
+      if (/^[A-Z]{2}$/.test(upper)) {
+        state = upper;
+        city = i > 0 ? (parts[i - 1] ?? null) : null;
+        break;
+      }
+    }
+
+    if (!city) city = parts.length >= 2 ? (parts[parts.length - 2] ?? null) : (parts[0] ?? null);
+    if (!state) {
+      const m = (parts[parts.length - 1] ?? '').match(/\b([A-Z]{2})\b/);
+      state = m ? m[1] : null;
+    }
+
+    if (city && state) return `${city}, ${state}`;
+    return city ?? state ?? source;
+  }
 
   private async requireCreator(authUser: AuthUser) {
     const found = await this.usersRepository.findByAuthUserIdWithProfiles(authUser.authUserId);
