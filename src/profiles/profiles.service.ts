@@ -8,7 +8,10 @@ import { Profile } from './entities/profile.entity';
 import { CreatorProfile } from './entities/creator-profile.entity';
 import { CompanyProfile } from './entities/company-profile.entity';
 import { UserRole } from '../common/enums/user-role.enum';
-import { UsersRepository } from '../users/users.repository';
+import {
+  type MarketplaceCreatorTestimonial,
+  UsersRepository,
+} from '../users/users.repository';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { UpdateCreatorProfileDto } from './dto/update-creator-profile.dto';
 import { UpdateCompanyProfileDto } from './dto/update-company-profile.dto';
@@ -266,6 +269,7 @@ export class ProfilesService {
     const portfolio = await this.portfolioService.buildPortfolioPayload(creatorId);
     const availabilityRules = await this.availabilityRepository.findByCreatorUserId(creatorId);
     const creatorJobTypes = await this.creatorJobTypesRepository.findByCreator(creatorId);
+    const testimonials = await this.usersRepository.findPublicTestimonialsForCreator(creatorId);
     const activeRules = availabilityRules.filter(
       (rule) => rule.isActive && rule.startTime && rule.endTime,
     );
@@ -324,6 +328,7 @@ export class ProfilesService {
           };
         }),
       portfolio,
+      testimonials: this.mapTestimonials(testimonials),
       availability: {
         timezone: 'America/Sao_Paulo',
         workingHours,
@@ -346,6 +351,17 @@ export class ProfilesService {
         }),
       },
     };
+  }
+
+  private mapTestimonials(testimonials: MarketplaceCreatorTestimonial[]) {
+    return testimonials.map((testimonial) => ({
+      id: testimonial.id,
+      authorName: testimonial.authorName,
+      authorRole: testimonial.authorRole,
+      authorInitials: testimonial.authorInitials,
+      rating: testimonial.rating,
+      text: testimonial.text,
+    }));
   }
 
   private async getUserOrThrow(authUserId: string): Promise<User> {

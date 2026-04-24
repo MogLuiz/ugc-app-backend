@@ -11,10 +11,19 @@ import { AuthModule } from '../auth/auth.module';
 import { Portfolio } from '../portfolio/entities/portfolio.entity';
 import { PortfolioMedia } from '../portfolio/entities/portfolio-media.entity';
 import { ReferralsModule } from '../referrals/referrals.module';
+import { Review } from '../reviews/entities/review.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User, Profile, CreatorProfile, CompanyProfile, Portfolio, PortfolioMedia]),
+    TypeOrmModule.forFeature([
+      User,
+      Profile,
+      CreatorProfile,
+      CompanyProfile,
+      Portfolio,
+      PortfolioMedia,
+      Review,
+    ]),
     AuthModule,
     ReferralsModule,
   ],

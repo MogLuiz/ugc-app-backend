@@ -6,6 +6,7 @@ import { UserRole } from '../common/enums/user-role.enum';
 import type { MarketplaceSortBy } from '../profiles/dto/list-marketplace-creators.dto';
 import { AGE_YEARS_SQL } from './marketplace-creator-age-sql';
 import { normalizeEmail } from '../common/utils/normalize-email';
+import { Review } from '../reviews/entities/review.entity';
 
 function mapRawAgeYears(value: string | number | null | undefined): number | null {
   if (value == null) return null;
@@ -42,6 +43,15 @@ export type MarketplaceCreatorDetailItem = MarketplaceCreatorListItem & {
   creatorServiceRadiusKm: number | null;
 };
 
+export type MarketplaceCreatorTestimonial = {
+  id: string;
+  authorName: string;
+  authorRole: 'COMPANY' | 'CREATOR';
+  authorInitials: string;
+  rating: number;
+  text: string;
+};
+
 export type ListMarketplaceCreatorsParams = {
   search?: string;
   serviceTypeId?: string;
@@ -57,6 +67,8 @@ export class UsersRepository {
   constructor(
     @InjectRepository(User)
     private readonly repo: Repository<User>,
+    @InjectRepository(Review)
+    private readonly reviewRepo: Repository<Review>,
   ) {}
 
   async findByAuthUserId(authUserId: string): Promise<User | null> {
@@ -426,4 +438,67 @@ export class UsersRepository {
             : parseFloat(row.minPrice),
     };
   }
+
+  async findPublicTestimonialsForCreator(
+    creatorId: string,
+  ): Promise<MarketplaceCreatorTestimonial[]> {
+    const rows = await this.reviewRepo
+      .createQueryBuilder('review')
+      .innerJoin('users', 'reviewer', 'reviewer.id = review.reviewer_user_id')
+      .leftJoin('profiles', 'reviewerProfile', 'reviewerProfile.user_id = reviewer.id')
+      .leftJoin('company_profiles', 'reviewerCompanyProfile', 'reviewerCompanyProfile.user_id = reviewer.id')
+      .where('review.reviewee_user_id = :creatorId', { creatorId })
+      .andWhere('review.comment IS NOT NULL')
+      .andWhere("NULLIF(BTRIM(review.comment), '') IS NOT NULL")
+      .orderBy('review.created_at', 'DESC')
+      .select('review.id', 'id')
+      .addSelect('review.reviewer_role', 'authorRole')
+      .addSelect('review.rating', 'rating')
+      .addSelect('BTRIM(review.comment)', 'text')
+      .addSelect(
+        `
+          COALESCE(
+            NULLIF(BTRIM(reviewerCompanyProfile.company_name), ''),
+            NULLIF(BTRIM(reviewerProfile.name), ''),
+            'Usuário'
+          )
+        `,
+        'authorName',
+      )
+      .getRawMany<{
+        id: string;
+        authorName: string;
+        authorRole: 'COMPANY' | 'CREATOR';
+        rating: string | number;
+        text: string;
+      }>();
+
+    return rows.map((row) => {
+      const authorName = normalizeAuthorName(row.authorName);
+      return {
+        id: row.id,
+        authorName,
+        authorRole: row.authorRole === 'COMPANY' ? 'COMPANY' : 'CREATOR',
+        authorInitials: getAuthorInitials(authorName),
+        rating: typeof row.rating === 'number' ? row.rating : parseInt(row.rating, 10),
+        text: row.text,
+      };
+    });
+  }
+}
+
+function normalizeAuthorName(name: string | null | undefined): string {
+  const normalized = name?.trim().replace(/\s+/g, ' ');
+  return normalized?.length ? normalized : 'Usuário';
+}
+
+function getAuthorInitials(name: string): string {
+  const initials = name
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toUpperCase())
+    .join('');
+
+  return initials || 'U';
 }
