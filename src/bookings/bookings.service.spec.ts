@@ -149,7 +149,7 @@ describe('BookingsService', () => {
         companyUser: {
           profile: {
             photoUrl: 'https://example.com/logo.png',
-            rating: 4.5,
+            averageRating: 4.5,
           },
           companyProfile: { companyName: 'Acme Corp' },
         },
@@ -313,7 +313,7 @@ describe('BookingsService', () => {
         jobType: { id: 'job-type-1', name: 'Presenca em evento' },
         companyUser: {
           companyProfile: { companyName: 'Acme Corp' },
-          profile: { name: 'Acme', photoUrl: null, rating: 4.2 },
+          profile: { name: 'Acme', photoUrl: null, averageRating: 4.2 },
         },
       },
     ]);
