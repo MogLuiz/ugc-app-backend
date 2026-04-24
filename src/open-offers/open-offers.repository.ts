@@ -223,4 +223,21 @@ export class OpenOffersRepository {
       .orderBy('app.appliedAt', 'DESC')
       .getMany();
   }
+
+  /** For the creator hub — loads company data and excludes SELECTED (represented by ContractRequest). */
+  async listApplicationsByCreatorForHub(
+    creatorUserId: string,
+  ): Promise<OpenOfferApplication[]> {
+    return this.appRepo
+      .createQueryBuilder('app')
+      .leftJoinAndSelect('app.openOffer', 'offer')
+      .leftJoinAndSelect('offer.jobType', 'jobType')
+      .leftJoinAndSelect('offer.companyUser', 'offerCompany')
+      .leftJoinAndSelect('offerCompany.profile', 'offerCompanyProfile')
+      .leftJoinAndSelect('offerCompany.companyProfile', 'offerCompanyCompanyProfile')
+      .where('app.creatorUserId = :creatorUserId', { creatorUserId })
+      .andWhere('app.status != :selected', { selected: ApplicationStatus.SELECTED })
+      .orderBy('app.appliedAt', 'DESC')
+      .getMany();
+  }
 }

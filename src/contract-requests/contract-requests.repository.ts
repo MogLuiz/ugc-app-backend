@@ -93,6 +93,8 @@ export class ContractRequestsRepository {
   async listByCompany(params: {
     companyUserId: string;
     statuses?: ContractRequestStatus[];
+    /** Quando fornecido, carrega a review do usuário em cada contrato (para calcular myReviewPending). */
+    currentUserId?: string;
   }): Promise<ContractRequest[]> {
     const query = this.repo
       .createQueryBuilder('contractRequest')
@@ -103,6 +105,15 @@ export class ContractRequestsRepository {
         companyUserId: params.companyUserId,
       })
       .orderBy('contractRequest.created_at', 'DESC');
+
+    if (params.currentUserId) {
+      query.leftJoinAndSelect(
+        'contractRequest.reviews',
+        'companyReview',
+        'companyReview.reviewer_user_id = :currentUserId',
+        { currentUserId: params.currentUserId },
+      );
+    }
 
     if (params.statuses?.length) {
       query.andWhere('contractRequest.status IN (:...statuses)', {
@@ -234,6 +245,31 @@ export class ContractRequestsRepository {
     }
 
     return qb.orderBy('contractRequest.startsAt', 'DESC').getMany();
+  }
+
+  async listAllByCreator(params: {
+    creatorUserId: string;
+    /** When provided, loads the creator's review on each contract (for myReviewPending). */
+    currentUserId: string;
+  }): Promise<ContractRequest[]> {
+    const qb = this.repo
+      .createQueryBuilder('contractRequest')
+      .leftJoinAndSelect('contractRequest.jobType', 'jobType')
+      .leftJoinAndSelect('contractRequest.companyUser', 'companyUser')
+      .leftJoinAndSelect('companyUser.profile', 'companyProfile')
+      .leftJoinAndSelect('companyUser.companyProfile', 'companyCompanyProfile')
+      .leftJoinAndSelect(
+        'contractRequest.reviews',
+        'creatorReview',
+        'creatorReview.reviewer_user_id = :currentUserId',
+        { currentUserId: params.currentUserId },
+      )
+      .where('contractRequest.creator_user_id = :creatorUserId', {
+        creatorUserId: params.creatorUserId,
+      })
+      .orderBy('contractRequest.updated_at', 'DESC');
+
+    return qb.getMany();
   }
 
   async save(

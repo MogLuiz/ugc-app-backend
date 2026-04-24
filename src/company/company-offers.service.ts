@@ -51,6 +51,8 @@ export type CompanyHubItem = {
   effectiveExpiresAt: string | null;
   /** Prazo de 72h para confirmar ou contestar (disponível para itens em AWAITING_COMPLETION_CONFIRMATION). */
   contestDeadlineAt: string | null;
+  /** Data de conclusão do contrato (quando status transitou para COMPLETED). Null para não-COMPLETED. */
+  completedAt: string | null;
   /**
    * True quando a empresa ainda não confirmou e o prazo está ativo.
    * Sinaliza que há uma ação pendente por parte da empresa.
@@ -58,6 +60,11 @@ export type CompanyHubItem = {
   actionRequiredByCompany: boolean;
   primaryAction: HubPrimaryAction;
   applicationsToReviewCount: number;
+  /**
+   * Indica se a empresa ainda não avaliou este contrato.
+   * true = avaliação pendente, false = já avaliada, null = não aplicável (não é COMPLETED).
+   */
+  myReviewPending: boolean | null;
   creatorId: string | null;
   creatorName: string | null;
   creatorAvatarUrl: string | null;
@@ -102,7 +109,10 @@ export class CompanyOffersService {
 
     const [allOffers, allContracts] = await Promise.all([
       this.openOffersRepository.listAllByCompany({ companyUserId: company.id }),
-      this.contractRequestsRepository.listByCompany({ companyUserId: company.id }),
+      this.contractRequestsRepository.listByCompany({
+        companyUserId: company.id,
+        currentUserId: company.id,
+      }),
     ]);
 
     const openOfferIds = allOffers
@@ -288,11 +298,13 @@ export class CompanyOffersService {
       expiresAt: offer.expiresAt?.toISOString() ?? null,
       effectiveExpiresAt: offer.expiresAt?.toISOString() ?? null,
       contestDeadlineAt: null,
+      completedAt: null,
       actionRequiredByCompany: false,
       primaryAction: section === 'pending' && applicationsToReviewCount > 0
         ? 'review_applications'
         : 'view_details',
       applicationsToReviewCount,
+      myReviewPending: null,
       creatorId: null,
       creatorName: null,
       creatorAvatarUrl: null,
@@ -332,9 +344,14 @@ export class CompanyOffersService {
       expiresAt: contract.expiresAt?.toISOString() ?? null,
       effectiveExpiresAt: effectiveExpiresAt?.toISOString() ?? null,
       contestDeadlineAt: contract.contestDeadlineAt?.toISOString() ?? null,
+      completedAt: contract.completedAt?.toISOString() ?? null,
       actionRequiredByCompany,
       primaryAction: 'view_details',
       applicationsToReviewCount: 0,
+      myReviewPending:
+        displayStatus === 'COMPLETED'
+          ? (contract.reviews == null || contract.reviews.length === 0)
+          : null,
       creatorId: contract.creatorUser?.id ?? null,
       creatorName: contract.creatorUser?.profile?.name ?? contract.creatorNameSnapshot ?? null,
       creatorAvatarUrl: contract.creatorUser?.profile?.photoUrl ?? contract.creatorAvatarUrlSnapshot ?? null,

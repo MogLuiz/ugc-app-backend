@@ -5,6 +5,7 @@ import {
   Index,
   JoinColumn,
   ManyToOne,
+  OneToMany,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
@@ -13,6 +14,7 @@ import { JobType } from '../../job-types/entities/job-type.entity';
 import { JobMode } from '../../common/enums/job-mode.enum';
 import { ContractRequestStatus } from '../../common/enums/contract-request-status.enum';
 import { PaymentStatus } from '../../common/enums/payment-status.enum';
+import { Review } from '../../reviews/entities/review.entity';
 
 const decimalTransformer = {
   to: (value?: number | null) => value ?? null,
@@ -275,4 +277,7 @@ export class ContractRequest {
   @ManyToOne(() => JobType)
   @JoinColumn({ name: 'job_type_id' })
   jobType: JobType;
+
+  @OneToMany(() => Review, (review) => review.contractRequest)
+  reviews: Review[];
 }
