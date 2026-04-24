@@ -23,6 +23,8 @@ import { ConversationsRepository } from './conversations.repository';
 
 const ACCESSIBLE_CHAT_STATUSES: ReadonlyArray<ContractRequestStatus> = [
   ContractRequestStatus.ACCEPTED,
+  ContractRequestStatus.AWAITING_COMPLETION_CONFIRMATION,
+  ContractRequestStatus.COMPLETION_DISPUTE,
   ContractRequestStatus.CANCELLED,
   ContractRequestStatus.COMPLETED,
 ] as const;
