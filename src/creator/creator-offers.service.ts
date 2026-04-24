@@ -256,6 +256,7 @@ export class CreatorOffersService {
       effectiveExpiresAt: effectiveExpiresAt?.toISOString() ?? null,
       expiresSoon: this.resolveExpiresSoon(effectiveExpiresAt, displayStatus, now),
       openOfferId: contract.openOfferId ?? null,
+      address: contract.jobFormattedAddress ?? contract.jobAddress ?? 'Local a combinar',
       locationDisplay: this.extractLocationDisplay(contract.jobFormattedAddress, contract.jobAddress),
 
       primaryAction,
@@ -307,6 +308,7 @@ export class CreatorOffersService {
       effectiveExpiresAt: offer?.expiresAt?.toISOString() ?? null,
       expiresSoon: false,
       openOfferId: app.openOfferId ?? null,
+      address: offer?.jobFormattedAddress ?? offer?.jobAddress ?? 'Local a combinar',
       locationDisplay: null,
 
       primaryAction: CreatorHubPrimaryAction.VIEW,
