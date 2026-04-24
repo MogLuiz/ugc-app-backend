@@ -250,6 +250,14 @@ export class ContractRequest {
   @Column({ name: 'completion_phase_entered_at', type: 'timestamptz', nullable: true })
   completionPhaseEnteredAt: Date | null;
 
+  /**
+   * True quando o contrato foi concluído automaticamente por aprovação tácita
+   * (prazo de 72h expirou sem nenhuma das partes confirmar nem contestar).
+   * False em todas as outras formas de conclusão (confirmação explícita bilateral ou unilateral).
+   */
+  @Column({ name: 'completed_by_tacit_approval', type: 'boolean', default: false })
+  completedByTacitApproval: boolean;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

@@ -15,7 +15,6 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { AuthUser } from '../common/interfaces/auth-user.interface';
 import { OpenOffersService } from './open-offers.service';
 import { CreateOpenOfferDto } from './dto/create-open-offer.dto';
-import { ListCompanyOffersDto } from './dto/list-company-offers.dto';
 import { ListAvailableOffersDto } from './dto/list-available-offers.dto';
 
 @Controller('open-offers')
@@ -28,11 +27,6 @@ export class OpenOffersController {
   @Post()
   create(@CurrentUser() user: AuthUser, @Body() dto: CreateOpenOfferDto) {
     return this.openOffersService.create(user, dto);
-  }
-
-  @Get('my')
-  listMy(@CurrentUser() user: AuthUser, @Query() query: ListCompanyOffersDto) {
-    return this.openOffersService.listMyCompany(user, query);
   }
 
   @Get('my/:id')

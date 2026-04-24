@@ -424,8 +424,6 @@ export class ContractRequestsService {
    * Não libera efeitos financeiros diretamente — apenas COMPLETED os libera via evento.
    */
   async confirmCompletion(user: AuthUser, contractRequestId: string) {
-    const CONTEST_DEADLINE_HOURS = 48;
-
     const { payload, event } = await this.dataSource.transaction(async (manager) => {
       const actor = await this.findActorForUpdate(user.authUserId, manager);
       const contractRequest = await this.getContractRequestForUpdate(contractRequestId, manager);
@@ -457,12 +455,6 @@ export class ContractRequestsService {
         contractRequest.creatorConfirmedCompletedAt = now;
       } else {
         contractRequest.companyConfirmedCompletedAt = now;
-      }
-
-      if (contractRequest.contestDeadlineAt === null) {
-        contractRequest.contestDeadlineAt = new Date(
-          now.getTime() + CONTEST_DEADLINE_HOURS * 60 * 60 * 1000,
-        );
       }
 
       let completedEvent: ContractRequestCompletedEvent | null = null;

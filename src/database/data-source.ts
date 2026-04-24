@@ -35,6 +35,7 @@ import { AddPendingPaymentAndExpiredStatuses1767000600000 } from './migrations/1
 import { AddPostJobCompletionFields1767000700000 } from './migrations/1767000700000-AddPostJobCompletionFields';
 import { AddReviewsTable1767000800000 } from './migrations/1767000800000-AddReviewsTable';
 import { MigrateProfileRatingToAverageRating1767000900000 } from './migrations/1767000900000-MigrateProfileRatingToAverageRating';
+import { AddTacitApprovalAndBackfillDeadline1767001000000 } from './migrations/1767001000000-AddTacitApprovalAndBackfillDeadline';
 
 config();
 
@@ -86,6 +87,7 @@ export const AppDataSource = new DataSource(
           AddPostJobCompletionFields1767000700000,
           AddReviewsTable1767000800000,
           MigrateProfileRatingToAverageRating1767000900000,
+          AddTacitApprovalAndBackfillDeadline1767001000000,
         ],
         synchronize: false,
         logging: process.env.NODE_ENV === 'development',
@@ -135,6 +137,7 @@ export const AppDataSource = new DataSource(
           AddPostJobCompletionFields1767000700000,
           AddReviewsTable1767000800000,
           MigrateProfileRatingToAverageRating1767000900000,
+          AddTacitApprovalAndBackfillDeadline1767001000000,
         ],
         synchronize: false,
         logging: process.env.NODE_ENV === 'development',

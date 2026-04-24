@@ -34,6 +34,7 @@ export type HubPrimaryAction = 'review_applications' | 'view_details';
  * View model do hub da empresa — não é DTO de domínio genérico.
  * Campos como title, address e os fallbacks ("Campanha", "Local a combinar")
  * são decisões de UI aplicadas no backend para simplificar a renderização.
+ * creatorId/Name/AvatarUrl são null para kind='open_offer' (sem creator único).
  */
 export type CompanyHubItem = {
   id: string;
@@ -48,8 +49,18 @@ export type CompanyHubItem = {
   displayStatus: HubDisplayStatus;
   expiresAt: string | null;
   effectiveExpiresAt: string | null;
+  /** Prazo de 72h para confirmar ou contestar (disponível para itens em AWAITING_COMPLETION_CONFIRMATION). */
+  contestDeadlineAt: string | null;
+  /**
+   * True quando a empresa ainda não confirmou e o prazo está ativo.
+   * Sinaliza que há uma ação pendente por parte da empresa.
+   */
+  actionRequiredByCompany: boolean;
   primaryAction: HubPrimaryAction;
   applicationsToReviewCount: number;
+  creatorId: string | null;
+  creatorName: string | null;
+  creatorAvatarUrl: string | null;
   offerId: string | null;
   contractRequestId: string | null;
   createdAt: string;
@@ -161,27 +172,27 @@ export class CompanyOffersService {
         case 'PENDING':
           if (!contract.openOfferId) {
             pending.directInvites.push(
-              this.mapContractToHubItem(contract, displayStatus, effectiveExpiresAt),
+              this.mapContractToHubItem(contract, displayStatus, effectiveExpiresAt, now),
             );
           }
           break;
         case 'ACCEPTED':
         case 'IN_PROGRESS':
-          inProgress.push(this.mapContractToHubItem(contract, displayStatus, effectiveExpiresAt));
+          inProgress.push(this.mapContractToHubItem(contract, displayStatus, effectiveExpiresAt, now));
           break;
         case 'COMPLETED':
           finalized.completed.push(
-            this.mapContractToHubItem(contract, displayStatus, effectiveExpiresAt),
+            this.mapContractToHubItem(contract, displayStatus, effectiveExpiresAt, now),
           );
           break;
         case 'CANCELLED':
           finalized.cancelled.push(
-            this.mapContractToHubItem(contract, displayStatus, effectiveExpiresAt),
+            this.mapContractToHubItem(contract, displayStatus, effectiveExpiresAt, now),
           );
           break;
         case 'EXPIRED':
           finalized.expiredWithoutHire.push(
-            this.mapContractToHubItem(contract, displayStatus, effectiveExpiresAt),
+            this.mapContractToHubItem(contract, displayStatus, effectiveExpiresAt, now),
           );
           break;
       }
@@ -276,10 +287,15 @@ export class CompanyOffersService {
       displayStatus,
       expiresAt: offer.expiresAt?.toISOString() ?? null,
       effectiveExpiresAt: offer.expiresAt?.toISOString() ?? null,
+      contestDeadlineAt: null,
+      actionRequiredByCompany: false,
       primaryAction: section === 'pending' && applicationsToReviewCount > 0
         ? 'review_applications'
         : 'view_details',
       applicationsToReviewCount,
+      creatorId: null,
+      creatorName: null,
+      creatorAvatarUrl: null,
       offerId: offer.id,
       contractRequestId: null,
       createdAt: offer.createdAt.toISOString(),
@@ -291,7 +307,17 @@ export class CompanyOffersService {
     contract: ContractRequest,
     displayStatus: HubDisplayStatus,
     effectiveExpiresAt: Date | null,
+    now: Date,
   ): CompanyHubItem {
+    const isAwaiting =
+      contract.status === ContractRequestStatus.AWAITING_COMPLETION_CONFIRMATION;
+
+    const actionRequiredByCompany =
+      isAwaiting &&
+      contract.companyConfirmedCompletedAt === null &&
+      contract.contestDeadlineAt !== null &&
+      contract.contestDeadlineAt > now;
+
     return {
       id: contract.id,
       kind: contract.openOfferId ? 'contract' : 'direct_invite',
@@ -305,8 +331,13 @@ export class CompanyOffersService {
       displayStatus,
       expiresAt: contract.expiresAt?.toISOString() ?? null,
       effectiveExpiresAt: effectiveExpiresAt?.toISOString() ?? null,
+      contestDeadlineAt: contract.contestDeadlineAt?.toISOString() ?? null,
+      actionRequiredByCompany,
       primaryAction: 'view_details',
       applicationsToReviewCount: 0,
+      creatorId: contract.creatorUser?.id ?? null,
+      creatorName: contract.creatorUser?.profile?.name ?? contract.creatorNameSnapshot ?? null,
+      creatorAvatarUrl: contract.creatorUser?.profile?.photoUrl ?? contract.creatorAvatarUrlSnapshot ?? null,
       offerId: contract.openOfferId ?? null,
       contractRequestId: contract.id,
       createdAt: contract.createdAt.toISOString(),

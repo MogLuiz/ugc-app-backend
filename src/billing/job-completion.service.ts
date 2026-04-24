@@ -10,16 +10,18 @@ import {
   ContractRequestCompletedEvent,
 } from '../contract-requests/events/contract-request-completed.event';
 
+const COMPLETION_DEADLINE_HOURS = 72;
+
 /**
  * Crons de transição de estado pós-job.
  *
  * Regras:
  * 1. ACCEPTED com endsAt passado → AWAITING_COMPLETION_CONFIRMATION
- *    (passa do horário final NÃO conclui; apenas abre janela de confirmação)
- * 2. AWAITING_COMPLETION_CONFIRMATION com contestDeadlineAt expirado
- *    E ≥ 1 confirmação → COMPLETED (auto-conclusão)
- *    Contratos sem nenhuma confirmação (contestDeadlineAt IS NULL) permanecem
- *    para triagem operacional/admin — nunca são auto-concluídos.
+ *    contestDeadlineAt = now + 72h é setado imediatamente na entrada.
+ * 2. AWAITING_COMPLETION_CONFIRMATION com contestDeadlineAt expirado:
+ *    a. ≥ 1 confirmação → COMPLETED (auto-conclusão explícita)
+ *    b. 0 confirmações  → COMPLETED por aprovação tácita (completedByTacitApproval = true)
+ *    Se não houver contestação até o prazo, o serviço é concluído automaticamente.
  *
  * Ambos os métodos são idempotentes: o UPDATE usa WHERE no status atual,
  * evitando race conditions com chamadas concorrentes.
@@ -38,6 +40,8 @@ export class JobCompletionService {
    * Detecta contratos ACCEPTED cujo horário final (startsAt + durationMinutes) já passou
    * e os move para AWAITING_COMPLETION_CONFIRMATION.
    *
+   * Seta contestDeadlineAt = now + 72h imediatamente — o prazo nasce na entrada,
+   * não na primeira confirmação.
    * NÃO gera nenhum efeito financeiro — apenas muda o status.
    */
   @Cron(CronExpression.EVERY_30_MINUTES)
@@ -60,6 +64,8 @@ export class JobCompletionService {
       `Transicionando ${overdue.length} contrato(s) para AWAITING_COMPLETION_CONFIRMATION`,
     );
 
+    const contestDeadlineAt = new Date(now.getTime() + COMPLETION_DEADLINE_HOURS * 60 * 60 * 1000);
+
     for (const contract of overdue) {
       try {
         const result = await this.contractRequestRepo.update(
@@ -67,6 +73,7 @@ export class JobCompletionService {
           {
             status: ContractRequestStatus.AWAITING_COMPLETION_CONFIRMATION,
             completionPhaseEnteredAt: now,
+            contestDeadlineAt,
           },
         );
 
@@ -82,57 +89,72 @@ export class JobCompletionService {
   }
 
   /**
-   * Auto-conclui contratos em AWAITING_COMPLETION_CONFIRMATION cujo contestDeadlineAt
-   * expirou E há pelo menos uma confirmação registrada.
+   * Auto-conclui contratos em AWAITING_COMPLETION_CONFIRMATION cujo contestDeadlineAt expirou.
+   * Dois cenários cobertos:
    *
-   * Contratos sem contestDeadlineAt (ninguém confirmou) são ignorados —
-   * ficam na fila operacional para resolução manual/admin.
+   * A. ≥ 1 confirmação → COMPLETED (auto-conclusão explícita)
+   * B. 0 confirmações  → COMPLETED por aprovação tácita (completedByTacitApproval = true)
+   *    "Se não houver contestação até o prazo, o serviço é concluído automaticamente."
    */
   @Cron(CronExpression.EVERY_30_MINUTES)
   async autoCompleteExpiredContests(): Promise<void> {
     const now = new Date();
 
-    const toComplete = await this.contractRequestRepo
-      .createQueryBuilder('cr')
-      .select([
-        'cr.id',
-        'cr.creatorUserId',
-        'cr.companyUserId',
-        'cr.creatorBasePrice',
-        'cr.totalPrice',
-        'cr.currency',
-      ])
-      .where('cr.status = :status', {
-        status: ContractRequestStatus.AWAITING_COMPLETION_CONFIRMATION,
-      })
-      .andWhere('cr.contest_deadline_at IS NOT NULL')
-      .andWhere('cr.contest_deadline_at < :now', { now })
-      .andWhere(
-        '(cr.creator_confirmed_completed_at IS NOT NULL OR cr.company_confirmed_completed_at IS NOT NULL)',
-      )
-      .getMany();
+    const baseSelect = [
+      'cr.id',
+      'cr.creatorUserId',
+      'cr.companyUserId',
+      'cr.creatorBasePrice',
+      'cr.totalPrice',
+      'cr.currency',
+    ];
 
-    if (toComplete.length === 0) return;
+    const [withConfirmation, withoutConfirmation] = await Promise.all([
+      // Branch A: prazo expirado + ≥1 confirmação
+      this.contractRequestRepo
+        .createQueryBuilder('cr')
+        .select(baseSelect)
+        .where('cr.status = :status', { status: ContractRequestStatus.AWAITING_COMPLETION_CONFIRMATION })
+        .andWhere('cr.contest_deadline_at IS NOT NULL')
+        .andWhere('cr.contest_deadline_at < :now', { now })
+        .andWhere(
+          '(cr.creator_confirmed_completed_at IS NOT NULL OR cr.company_confirmed_completed_at IS NOT NULL)',
+        )
+        .getMany(),
+
+      // Branch B: prazo expirado + 0 confirmações (aprovação tácita)
+      this.contractRequestRepo
+        .createQueryBuilder('cr')
+        .select(baseSelect)
+        .where('cr.status = :status', { status: ContractRequestStatus.AWAITING_COMPLETION_CONFIRMATION })
+        .andWhere('cr.contest_deadline_at IS NOT NULL')
+        .andWhere('cr.contest_deadline_at < :now', { now })
+        .andWhere('cr.creator_confirmed_completed_at IS NULL')
+        .andWhere('cr.company_confirmed_completed_at IS NULL')
+        .getMany(),
+    ]);
+
+    if (withConfirmation.length === 0 && withoutConfirmation.length === 0) return;
 
     this.logger.log(
-      `Auto-concluindo ${toComplete.length} contrato(s) com prazo de contestação expirado`,
+      `Auto-concluindo contratos: ${withConfirmation.length} com confirmação, ${withoutConfirmation.length} por aprovação tácita`,
     );
 
-    for (const contract of toComplete) {
+    const complete = async (contract: { id: string; creatorUserId: string; companyUserId: string; creatorBasePrice: number; totalPrice: number; currency: string }, tacitApproval: boolean) => {
       try {
         const result = await this.contractRequestRepo.update(
-          {
-            id: contract.id,
-            status: ContractRequestStatus.AWAITING_COMPLETION_CONFIRMATION,
-          },
+          { id: contract.id, status: ContractRequestStatus.AWAITING_COMPLETION_CONFIRMATION },
           {
             status: ContractRequestStatus.COMPLETED,
             completedAt: now,
+            ...(tacitApproval && { completedByTacitApproval: true }),
           },
         );
 
         if (result.affected && result.affected > 0) {
-          this.logger.log(`Contrato ${contract.id} auto-concluído`);
+          this.logger.log(
+            `Contrato ${contract.id} concluído${tacitApproval ? ' por aprovação tácita' : ''}`,
+          );
 
           this.eventEmitter.emit(CONTRACT_REQUEST_COMPLETED_EVENT, {
             contractRequestId: contract.id,
@@ -145,10 +167,13 @@ export class JobCompletionService {
           } satisfies ContractRequestCompletedEvent);
         }
       } catch (err) {
-        this.logger.error(
-          `Erro ao auto-concluir contrato ${contract.id}: ${String(err)}`,
-        );
+        this.logger.error(`Erro ao concluir contrato ${contract.id}: ${String(err)}`);
       }
-    }
+    };
+
+    await Promise.all([
+      ...withConfirmation.map((c) => complete(c, false)),
+      ...withoutConfirmation.map((c) => complete(c, true)),
+    ]);
   }
 }
