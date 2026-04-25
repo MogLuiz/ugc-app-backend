@@ -43,6 +43,9 @@ import { CompanyBalanceService } from '../billing/company-balance.service';
 import { BalanceTransactionType } from '../billing/enums/balance-transaction-type.enum';
 import { Payment } from '../payments/entities/payment.entity';
 import { SettlementStatus } from '../payments/enums/settlement-status.enum';
+import { LegalService } from '../legal/legal.service';
+import { LegalTermType } from '../common/enums/legal-term-type.enum';
+import { LegalAcceptance } from '../legal/entities/legal-acceptance.entity';
 
 type PreparedContractRequest = {
   companyUser: User;
@@ -78,6 +81,7 @@ export type CreateFromOpenOfferParams = {
   effectiveServiceRadiusKm: number;
   platformFeeRateSnapshot: number;
   pricing: ReturnType<PricingService['buildPricing']>;
+  hiringAcceptance: LegalAcceptance;
 };
 
 type GeocodingCacheEntry = {
@@ -93,6 +97,11 @@ type CompanyCampaignStatus =
   | 'IN_PROGRESS'
   | 'COMPLETED'
   | 'CANCELLED';
+
+type LegalAcceptanceContext = {
+  ipAddress?: string | null;
+  userAgent?: string | null;
+};
 
 @Injectable()
 export class ContractRequestsService {
@@ -115,6 +124,7 @@ export class ContractRequestsService {
     private readonly conversationsService: ConversationsService,
     private readonly eventEmitter: EventEmitter2,
     private readonly companyBalanceService: CompanyBalanceService,
+    private readonly legalService: LegalService,
   ) {}
 
   async preview(user: AuthUser, dto: PreviewContractRequestDto) {
@@ -139,9 +149,19 @@ export class ContractRequestsService {
     };
   }
 
-  async create(user: AuthUser, dto: CreateContractRequestDto) {
+  async create(
+    user: AuthUser,
+    dto: CreateContractRequestDto,
+    legalAcceptanceContext: LegalAcceptanceContext = {},
+  ) {
     return this.dataSource.transaction(async (manager) => {
       const prepared = await this.prepareContractRequest(user, dto, manager);
+      const hiringAcceptance = await this.legalService.resolveCurrentAcceptance(
+        prepared.companyUser.id,
+        LegalTermType.COMPANY_HIRING,
+        dto.legalAcceptance,
+        legalAcceptanceContext,
+      );
 
       // Novo fluxo: empresa paga antes de enviar ao creator → sempre PENDING_PAYMENT.
       // A notificação ao creator só acontece após confirmação do pagamento (webhook).
@@ -158,7 +178,10 @@ export class ContractRequestsService {
           status: ContractRequestStatus.PENDING_PAYMENT,
           paymentStatus: PaymentStatus.PENDING,
           currency: prepared.pricing.currency,
-          termsAcceptedAt: new Date(),
+          termsAcceptedAt: hiringAcceptance.acceptedAt,
+          hiringTermsVersion: hiringAcceptance.termVersion,
+          hiringTermsAcceptedAt: hiringAcceptance.acceptedAt,
+          hiringTermsAcceptanceId: hiringAcceptance.id,
           startsAt: prepared.startsAt,
           durationMinutes: prepared.durationMinutes,
           jobAddress: prepared.jobAddress,
@@ -543,7 +566,10 @@ export class ContractRequestsService {
         status: ContractRequestStatus.ACCEPTED,
         paymentStatus: PaymentStatus.PENDING,
         currency: pricing.currency,
-        termsAcceptedAt: new Date(),
+        termsAcceptedAt: params.hiringAcceptance.acceptedAt,
+        hiringTermsVersion: params.hiringAcceptance.termVersion,
+        hiringTermsAcceptedAt: params.hiringAcceptance.acceptedAt,
+        hiringTermsAcceptanceId: params.hiringAcceptance.id,
         effectiveServiceRadiusKmUsed: params.effectiveServiceRadiusKm,
         transportFee: pricing.transportFee,
         creatorBasePrice: pricing.creatorBasePrice,
@@ -574,10 +600,6 @@ export class ContractRequestsService {
     dto: PreviewContractRequestDto | CreateContractRequestDto,
     manager?: EntityManager,
   ): Promise<PreparedContractRequest> {
-    if (!dto.termsAccepted) {
-      throw new BadRequestException('É necessário aceitar os termos para continuar');
-    }
-
     const companyUser = await this.requireAuthenticatedUser(user.authUserId);
     this.ensureRole(companyUser, UserRole.COMPANY, 'Apenas empresas podem contratar creators');
 
@@ -821,6 +843,9 @@ export class ContractRequestsService {
       paymentStatus: contractRequest.paymentStatus,
       currency: contractRequest.currency,
       termsAcceptedAt: contractRequest.termsAcceptedAt.toISOString(),
+      hiringTermsVersion: contractRequest.hiringTermsVersion ?? null,
+      hiringTermsAcceptedAt: contractRequest.hiringTermsAcceptedAt?.toISOString() ?? null,
+      hiringTermsAcceptanceId: contractRequest.hiringTermsAcceptanceId ?? null,
       startsAt: contractRequest.startsAt.toISOString(),
       durationMinutes: contractRequest.durationMinutes,
       jobAddress: contractRequest.jobAddress,

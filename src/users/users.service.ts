@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from './entities/user.entity';
@@ -11,6 +11,8 @@ import { Portfolio } from '../portfolio/entities/portfolio.entity';
 import { PortfolioMedia } from '../portfolio/entities/portfolio-media.entity';
 import { ReferralsService } from '../referrals/services/referrals.service';
 import { normalizeEmail } from '../common/utils/normalize-email';
+import { LegalService } from '../legal/legal.service';
+import { RecordLegalAcceptanceDto } from '../legal/dto/record-legal-acceptance.dto';
 
 function isUniqueViolation(err: unknown): boolean {
   return (err as { code?: string })?.code === '23505';
@@ -33,10 +35,23 @@ export class UsersService {
     @InjectRepository(PortfolioMedia)
     private portfolioMediaRepo: Repository<PortfolioMedia>,
     private readonly referralsService: ReferralsService,
+    private readonly legalService: LegalService,
   ) {}
 
-  async bootstrap(authUserId: string, rawEmail: string, role: UserRole, referralCode?: string, displayName?: string) {
+  async bootstrap(
+    authUserId: string,
+    rawEmail: string,
+    role: UserRole,
+    referralCode?: string,
+    displayName?: string,
+    legalAcceptance?: RecordLegalAcceptanceDto,
+    requestContext?: { userAgent?: string | null; ipAddress?: string | null },
+  ) {
     const email = normalizeEmail(rawEmail || `${authUserId}@unknown`);
+
+    if (legalAcceptance) {
+      this.legalService.validateSignupAcceptance(role, legalAcceptance);
+    }
 
     // Step 1: idempotent — return existing user if already bootstrapped with this authUserId
     const existingByAuthId = await this.usersRepository.findByAuthUserIdWithProfiles(authUserId);
@@ -54,9 +69,16 @@ export class UsersService {
         `bootstrap: re-linking authUserId for existing user ${existingByEmail.id} (email: ${email})`,
       );
       await this.usersRepository.updateAuthUserId(existingByEmail.id, authUserId);
+      if (legalAcceptance) {
+        await this.legalService.recordAcceptance(existingByEmail.id, legalAcceptance, requestContext);
+      }
       const relinked = await this.usersRepository.findByAuthUserIdWithProfiles(authUserId);
       if (!relinked) throw new Error('User not found after auth re-link');
       return this.buildPayload(relinked);
+    }
+
+    if (!legalAcceptance) {
+      throw new BadRequestException('legalAcceptance é obrigatório para concluir o cadastro');
     }
 
     // Step 3: create new user, with race-condition fallback on unique violation
@@ -104,6 +126,10 @@ export class UsersService {
           (error as Error).stack,
         );
       }
+    }
+
+    if (legalAcceptance) {
+      await this.legalService.recordAcceptance(user.id, legalAcceptance, requestContext);
     }
 
     const userWithProfiles = await this.usersRepository.findByAuthUserIdWithProfiles(authUserId);

@@ -7,6 +7,7 @@ import { UserRole } from '../common/enums/user-role.enum';
 import { JobMode } from '../common/enums/job-mode.enum';
 import { PaymentStatus } from '../common/enums/payment-status.enum';
 import { ContractRequestStatus } from '../common/enums/contract-request-status.enum';
+import { LegalTermType } from '../common/enums/legal-term-type.enum';
 
 // ─── PricingService ──────────────────────────────────────────────────────────
 
@@ -211,6 +212,14 @@ describe('ContractRequestsService', () => {
       creditFromPayment: jest.fn().mockResolvedValue(undefined),
     };
 
+    const legalService = {
+      resolveCurrentAcceptance: jest.fn().mockResolvedValue({
+        id: 'legal-acceptance-1',
+        termVersion: '2026-04-25',
+        acceptedAt: new Date('2026-04-25T12:00:00.000Z'),
+      }),
+    };
+
     const service = new ContractRequestsService(
       configService as never,
       dataSource,
@@ -226,6 +235,7 @@ describe('ContractRequestsService', () => {
       conversationsService as never,
       eventEmitter as never,
       companyBalanceService as never,
+      legalService as never,
     );
 
     return {
@@ -247,6 +257,7 @@ describe('ContractRequestsService', () => {
         conversationsService,
         eventEmitter,
         configService,
+        legalService,
       },
     };
   }
@@ -265,13 +276,18 @@ describe('ContractRequestsService', () => {
         startsAt: '2026-06-01T10:00:00.000Z',
         durationMinutes: 120,
         jobAddress: 'Av. Paulista, 1000',
-        termsAccepted: true,
+        legalAcceptance: {
+          termType: LegalTermType.COMPANY_HIRING,
+          termVersion: '2026-04-25',
+          accepted: true,
+        },
       },
     );
 
     expect(result.status).toBe(ContractRequestStatus.PENDING_PAYMENT);
     expect(result.paymentStatus).toBe(PaymentStatus.PENDING);
     expect(mocks.conversationsService.ensureConversationForContractRequest).not.toHaveBeenCalled();
+    expect(mocks.legalService.resolveCurrentAcceptance).toHaveBeenCalled();
   });
 
   it('regression: direct hire platformFeeRateSnapshot = 0 when jobType.platformFeeRate = 0', async () => {
@@ -286,7 +302,11 @@ describe('ContractRequestsService', () => {
         startsAt: '2026-06-01T10:00:00.000Z',
         durationMinutes: 120,
         jobAddress: 'Av. Paulista, 1000',
-        termsAccepted: true,
+        legalAcceptance: {
+          termType: LegalTermType.COMPANY_HIRING,
+          termVersion: '2026-04-25',
+          accepted: true,
+        },
       },
     );
 
@@ -295,6 +315,8 @@ describe('ContractRequestsService', () => {
     expect(savedPayload.platformFeeRateSnapshot).toBe(0);
     expect(savedPayload.openOfferId).toBeNull();
     expect(savedPayload.platformFee).toBe(0);
+    expect(savedPayload.hiringTermsVersion).toBe('2026-04-25');
+    expect(savedPayload.hiringTermsAcceptanceId).toBe('legal-acceptance-1');
     // totalPrice = creatorBasePrice + transportFee
     expect(savedPayload.totalPrice).toBe(savedPayload.creatorBasePrice + savedPayload.transportFee);
   });
@@ -319,7 +341,11 @@ describe('ContractRequestsService', () => {
         startsAt: '2026-06-01T10:00:00.000Z',
         durationMinutes: 120,
         jobAddress: 'Av. Paulista, 1000',
-        termsAccepted: true,
+        legalAcceptance: {
+          termType: LegalTermType.COMPANY_HIRING,
+          termVersion: '2026-04-25',
+          accepted: true,
+        },
       },
     );
 
@@ -369,6 +395,11 @@ describe('ContractRequestsService', () => {
         effectiveServiceRadiusKm: 30,
         platformFeeRateSnapshot: 0.10,
         pricing,
+        hiringAcceptance: {
+          id: 'legal-acceptance-offer-1',
+          termVersion: '2026-04-25',
+          acceptedAt: new Date('2026-04-25T12:00:00.000Z'),
+        } as any,
       },
       fakeManager,
     );
@@ -382,6 +413,8 @@ describe('ContractRequestsService', () => {
     expect(savedPayload.openOfferId).toBe('offer-123');
     expect(savedPayload.platformFeeRateSnapshot).toBe(0.10);
     expect(savedPayload.openOfferId).not.toBeNull();
+    expect(savedPayload.hiringTermsVersion).toBe('2026-04-25');
+    expect(savedPayload.hiringTermsAcceptanceId).toBe('legal-acceptance-offer-1');
 
     // Conversa deve ter sido criada com o mesmo manager
     expect(mocks.conversationsService.ensureConversationForContractRequest).toHaveBeenCalledWith(
@@ -425,6 +458,11 @@ describe('ContractRequestsService', () => {
         effectiveServiceRadiusKm: 30,
         platformFeeRateSnapshot: 0.20,
         pricing,
+        hiringAcceptance: {
+          id: 'legal-acceptance-offer-2',
+          termVersion: '2026-04-25',
+          acceptedAt: new Date('2026-04-25T12:00:00.000Z'),
+        } as any,
       },
       fakeManager,
     );
@@ -498,10 +536,17 @@ describe('OpenOffersService.selectCreator — concorrência', () => {
       {} as any, // schedulingConflictService
       {} as any, // contractRequestsService
       { get: jest.fn() } as any,
+      {
+        resolveCurrentAcceptance: jest.fn().mockResolvedValue({
+          id: 'legal-acceptance-1',
+          termVersion: '2026-04-25',
+          acceptedAt: new Date('2026-04-25T12:00:00.000Z'),
+        }),
+      } as any,
     );
 
     await expect(
-      service.selectCreator({ authUserId: 'auth-company' }, 'offer-1', 'app-1'),
+      service.selectCreator({ authUserId: 'auth-company' }, 'offer-1', 'app-1', {}),
     ).rejects.toMatchObject({ message: expect.stringContaining('FILLED') });
   });
 
@@ -586,10 +631,17 @@ describe('OpenOffersService.selectCreator — concorrência', () => {
       schedulingConflictService as any,
       {} as any,
       { get: jest.fn().mockReturnValue(30) } as any,
+      {
+        resolveCurrentAcceptance: jest.fn().mockResolvedValue({
+          id: 'legal-acceptance-2',
+          termVersion: '2026-04-25',
+          acceptedAt: new Date('2026-04-25T12:00:00.000Z'),
+        }),
+      } as any,
     );
 
     await expect(
-      service.selectCreator({ authUserId: 'auth-company' }, 'offer-2', 'app-2'),
+      service.selectCreator({ authUserId: 'auth-company' }, 'offer-2', 'app-2', {}),
     ).rejects.toMatchObject({
       message: expect.stringContaining('agenda'),
     });

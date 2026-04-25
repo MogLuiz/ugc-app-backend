@@ -8,14 +8,17 @@ import {
   Patch,
   Post,
   Query,
+  Req,
   UseGuards,
 } from '@nestjs/common';
+import { Request } from 'express';
 import { SupabaseAuthGuard } from '../auth/guards/supabase-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { AuthUser } from '../common/interfaces/auth-user.interface';
 import { OpenOffersService } from './open-offers.service';
 import { CreateOpenOfferDto } from './dto/create-open-offer.dto';
 import { ListAvailableOffersDto } from './dto/list-available-offers.dto';
+import { SelectOpenOfferCreatorDto } from './dto/select-open-offer-creator.dto';
 
 @Controller('open-offers')
 @UseGuards(SupabaseAuthGuard)
@@ -50,8 +53,13 @@ export class OpenOffersController {
     @CurrentUser() user: AuthUser,
     @Param('id', ParseUUIDPipe) id: string,
     @Param('applicationId', ParseUUIDPipe) applicationId: string,
+    @Body() dto: SelectOpenOfferCreatorDto,
+    @Req() request: Request,
   ) {
-    return this.openOffersService.selectCreator(user, id, applicationId);
+    return this.openOffersService.selectCreator(user, id, applicationId, dto, {
+      userAgent: request.headers['user-agent'] ?? null,
+      ipAddress: request.ip ?? null,
+    });
   }
 
   // ─── Creator ──────────────────────────────────────────────────────────────

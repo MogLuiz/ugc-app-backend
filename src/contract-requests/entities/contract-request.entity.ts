@@ -15,6 +15,7 @@ import { JobMode } from '../../common/enums/job-mode.enum';
 import { ContractRequestStatus } from '../../common/enums/contract-request-status.enum';
 import { PaymentStatus } from '../../common/enums/payment-status.enum';
 import { Review } from '../../reviews/entities/review.entity';
+import { LegalAcceptance } from '../../legal/entities/legal-acceptance.entity';
 
 const decimalTransformer = {
   to: (value?: number | null) => value ?? null,
@@ -73,6 +74,15 @@ export class ContractRequest {
 
   @Column({ name: 'terms_accepted_at', type: 'timestamptz' })
   termsAcceptedAt: Date;
+
+  @Column({ name: 'hiring_terms_version', type: 'varchar', length: 50, nullable: true })
+  hiringTermsVersion: string | null;
+
+  @Column({ name: 'hiring_terms_accepted_at', type: 'timestamptz', nullable: true })
+  hiringTermsAcceptedAt: Date | null;
+
+  @Column({ name: 'hiring_terms_acceptance_id', type: 'uuid', nullable: true })
+  hiringTermsAcceptanceId: string | null;
 
   @Column({ name: 'starts_at', type: 'timestamptz' })
   startsAt: Date;
@@ -214,6 +224,10 @@ export class ContractRequest {
    */
   @Column({ name: 'expires_at', type: 'timestamptz', nullable: true })
   expiresAt: Date | null;
+
+  @ManyToOne(() => LegalAcceptance, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'hiring_terms_acceptance_id' })
+  hiringTermsAcceptance?: LegalAcceptance | null;
 
   // ─── Campos de confirmação bilateral de conclusão ────────────────────────────
 

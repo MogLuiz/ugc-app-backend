@@ -99,6 +99,7 @@ export class PortfolioService {
         type: item.type,
         url: item.publicUrl,
         thumbnailUrl: item.thumbnailUrl,
+        mimeType: item.mimeType,
         sortOrder: item.sortOrder,
         status: item.status,
         createdAt: item.createdAt,

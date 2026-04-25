@@ -24,6 +24,7 @@ import { PaymentsModule } from './payments/payments.module';
 import { BillingModule } from './billing/billing.module';
 import { ReviewsModule } from './reviews/reviews.module';
 import { CompanyModule } from './company/company.module';
+import { LegalModule } from './legal/legal.module';
 
 @Module({
   imports: [
@@ -48,6 +49,7 @@ import { CompanyModule } from './company/company.module';
     BillingModule,
     ReviewsModule,
     CompanyModule,
+    LegalModule,
     UploadsModule,
     HealthModule,
   ],

@@ -6,8 +6,10 @@ import {
   Patch,
   Post,
   Query,
+  Req,
   UseGuards,
 } from '@nestjs/common';
+import { Request } from 'express';
 import { SupabaseAuthGuard } from '../auth/guards/supabase-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { AuthUser } from '../common/interfaces/auth-user.interface';
@@ -38,8 +40,12 @@ export class ContractRequestsController {
   async create(
     @CurrentUser() user: AuthUser,
     @Body() dto: CreateContractRequestDto,
+    @Req() request: Request,
   ) {
-    return this.contractRequestsService.create(user, dto);
+    return this.contractRequestsService.create(user, dto, {
+      userAgent: request.headers['user-agent'] ?? null,
+      ipAddress: request.ip ?? null,
+    });
   }
 
   @Get('my-company')

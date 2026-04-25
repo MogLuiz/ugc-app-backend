@@ -36,6 +36,8 @@ import { AddPostJobCompletionFields1767000700000 } from './migrations/1767000700
 import { AddReviewsTable1767000800000 } from './migrations/1767000800000-AddReviewsTable';
 import { MigrateProfileRatingToAverageRating1767000900000 } from './migrations/1767000900000-MigrateProfileRatingToAverageRating';
 import { AddTacitApprovalAndBackfillDeadline1767001000000 } from './migrations/1767001000000-AddTacitApprovalAndBackfillDeadline';
+import { AddLegalAcceptances1767001100000 } from './migrations/1767001100000-AddLegalAcceptances';
+import { AddHiringTermsSnapshotToContractRequests1767001200000 } from './migrations/1767001200000-AddHiringTermsSnapshotToContractRequests';
 
 config();
 
@@ -89,6 +91,8 @@ export const AppDataSource = new DataSource(
         AddReviewsTable1767000800000,
         MigrateProfileRatingToAverageRating1767000900000,
         AddTacitApprovalAndBackfillDeadline1767001000000,
+        AddLegalAcceptances1767001100000,
+        AddHiringTermsSnapshotToContractRequests1767001200000,
       ],
       synchronize: false,
       logging: process.env.NODE_ENV === 'development',
@@ -140,6 +144,8 @@ export const AppDataSource = new DataSource(
         AddReviewsTable1767000800000,
         MigrateProfileRatingToAverageRating1767000900000,
         AddTacitApprovalAndBackfillDeadline1767001000000,
+        AddLegalAcceptances1767001100000,
+        AddHiringTermsSnapshotToContractRequests1767001200000,
       ],
       synchronize: false,
       logging: process.env.NODE_ENV === 'development',

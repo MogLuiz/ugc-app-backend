@@ -7,6 +7,7 @@ import { PlatformSettingsModule } from '../platform-settings/platform-settings.m
 import { GeocodingModule } from '../geocoding/geocoding.module';
 import { SchedulingModule } from '../scheduling/scheduling.module';
 import { ContractRequestsModule } from '../contract-requests/contract-requests.module';
+import { LegalModule } from '../legal/legal.module';
 import { OpenOffersController } from './open-offers.controller';
 import { OpenOffersService } from './open-offers.service';
 import { OpenOffersRepository } from './open-offers.repository';
@@ -26,6 +27,7 @@ import { TransportService } from '../contract-requests/services/transport.servic
     GeocodingModule,
     SchedulingModule,
     ContractRequestsModule,
+    LegalModule,
   ],
   controllers: [OpenOffersController],
   providers: [

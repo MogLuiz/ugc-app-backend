@@ -27,6 +27,15 @@ import { ListCompanyOffersDto } from './dto/list-company-offers.dto';
 import { ListAvailableOffersDto } from './dto/list-available-offers.dto';
 import { User } from '../users/entities/user.entity';
 import { JobMode } from '../common/enums/job-mode.enum';
+import { SelectOpenOfferCreatorDto } from './dto/select-open-offer-creator.dto';
+import { LegalService } from '../legal/legal.service';
+import { LegalTermType } from '../common/enums/legal-term-type.enum';
+import { LegalAcceptance } from '../legal/entities/legal-acceptance.entity';
+
+type LegalAcceptanceContext = {
+  ipAddress?: string | null;
+  userAgent?: string | null;
+};
 
 @Injectable()
 export class OpenOffersService {
@@ -44,6 +53,7 @@ export class OpenOffersService {
     private readonly schedulingConflictService: SchedulingConflictService,
     private readonly contractRequestsService: ContractRequestsService,
     private readonly configService: ConfigService,
+    private readonly legalService: LegalService,
   ) {}
 
   async create(authUser: AuthUser, dto: CreateOpenOfferDto) {
@@ -346,8 +356,19 @@ export class OpenOffersService {
     }));
   }
 
-  async selectCreator(authUser: AuthUser, offerId: string, applicationId: string) {
+  async selectCreator(
+    authUser: AuthUser,
+    offerId: string,
+    applicationId: string,
+    dto: SelectOpenOfferCreatorDto,
+    legalAcceptanceContext: LegalAcceptanceContext = {},
+  ) {
     const company = await this.requireUser(authUser.authUserId, UserRole.COMPANY);
+    const hiringAcceptance = await this.resolveHiringAcceptance(
+      company.id,
+      dto,
+      legalAcceptanceContext,
+    );
 
     return this.dataSource.transaction(async (manager) => {
       // 1. Lock pessimista na oferta
@@ -452,6 +473,7 @@ export class OpenOffersService {
           effectiveServiceRadiusKm,
           platformFeeRateSnapshot: offer.platformFeeRateSnapshot,
           pricing,
+          hiringAcceptance,
         },
         manager,
       );
@@ -478,6 +500,19 @@ export class OpenOffersService {
         creatorId: creatorUser.id,
       };
     });
+  }
+
+  private async resolveHiringAcceptance(
+    companyUserId: string,
+    dto: SelectOpenOfferCreatorDto,
+    legalAcceptanceContext: LegalAcceptanceContext,
+  ): Promise<LegalAcceptance> {
+    return this.legalService.resolveCurrentAcceptance(
+      companyUserId,
+      LegalTermType.COMPANY_HIRING,
+      dto.legalAcceptance,
+      legalAcceptanceContext,
+    );
   }
 
   // ─── Helpers ──────────────────────────────────────────────────────────────

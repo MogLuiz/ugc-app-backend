@@ -12,6 +12,7 @@ import { Portfolio } from '../portfolio/entities/portfolio.entity';
 import { PortfolioMedia } from '../portfolio/entities/portfolio-media.entity';
 import { ReferralsModule } from '../referrals/referrals.module';
 import { Review } from '../reviews/entities/review.entity';
+import { LegalModule } from '../legal/legal.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { Review } from '../reviews/entities/review.entity';
     ]),
     AuthModule,
     ReferralsModule,
+    LegalModule,
   ],
   controllers: [UsersController],
   providers: [UsersRepository, UsersService],

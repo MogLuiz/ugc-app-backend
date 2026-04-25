@@ -32,6 +32,6 @@ export class ContractRequestInputDto {
   @MaxLength(500)
   jobAddress: string;
 
-  @IsBoolean()
+  @IsBoolean({ message: 'É necessário informar o aceite dos termos.' })
   termsAccepted: boolean;
 }

@@ -29,6 +29,7 @@ import { CompanyBalance } from '../billing/entities/company-balance.entity';
 import { CompanyBalanceTransaction } from '../billing/entities/company-balance-transaction.entity';
 import { RefundRequest } from '../billing/entities/refund-request.entity';
 import { Review } from '../reviews/entities/review.entity';
+import { LegalAcceptance } from '../legal/entities/legal-acceptance.entity';
 
 @Module({
   imports: [
@@ -72,6 +73,7 @@ import { Review } from '../reviews/entities/review.entity';
               CompanyBalanceTransaction,
               RefundRequest,
               Review,
+              LegalAcceptance,
             ],
             synchronize: false,
             logging: configService.get<string>('NODE_ENV') === 'development',
@@ -116,6 +118,7 @@ import { Review } from '../reviews/entities/review.entity';
               CompanyBalanceTransaction,
               RefundRequest,
               Review,
+              LegalAcceptance,
             ],
             synchronize: false,
             logging: configService.get<string>('NODE_ENV') === 'development',
