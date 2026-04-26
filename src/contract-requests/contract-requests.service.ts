@@ -130,9 +130,12 @@ export class ContractRequestsService {
   async preview(user: AuthUser, dto: PreviewContractRequestDto) {
     const prepared = await this.prepareContractRequest(user, dto);
     const snap = prepared.financialSnapshot;
+    const currency = 'BRL';
+    const transportFeeReais = snap.transportFeeAmountCents / 100;
 
     return {
       mode: JobMode.PRESENTIAL,
+      currency,
       startsAt: prepared.startsAt.toISOString(),
       durationMinutes: prepared.durationMinutes,
       jobAddress: prepared.jobAddress,
@@ -146,6 +149,11 @@ export class ContractRequestsService {
         prepared.distanceKm,
         prepared.effectiveServiceRadiusKm,
       ),
+      transport: {
+        price: transportFeeReais,
+        formatted: this.formatCurrency(transportFeeReais, currency),
+        isMinimumApplied: prepared.transport.transportIsMinimumApplied,
+      },
       serviceGrossAmountCents: snap.serviceGrossAmountCents,
       platformFeeBpsSnapshot: snap.platformFeeBpsSnapshot,
       platformFeeAmountCents: snap.platformFeeAmountCents,
@@ -153,6 +161,8 @@ export class ContractRequestsService {
       transportFeeAmountCents: snap.transportFeeAmountCents,
       creatorPayoutAmountCents: snap.creatorPayoutAmountCents,
       companyTotalAmountCents: snap.companyTotalAmountCents,
+      transportPricePerKmUsed: prepared.transport.transportPricePerKmUsed,
+      transportMinimumFeeUsed: prepared.transport.transportMinimumFeeUsed,
       transportIsMinimumApplied: prepared.transport.transportIsMinimumApplied,
     };
   }

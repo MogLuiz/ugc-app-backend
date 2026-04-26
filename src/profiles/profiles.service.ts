@@ -313,10 +313,11 @@ export class ProfilesService {
       services: creatorJobTypes
         .filter((item) => item.jobType.mode === JobMode.PRESENTIAL)
         .map((item) => {
-          const basePriceReais =
+          const serviceGrossAmountCents =
             item.basePriceCents != null
-              ? item.basePriceCents / 100
-              : item.jobType.price;
+              ? item.basePriceCents
+              : Math.round(item.jobType.price * 100);
+          const basePriceReais = serviceGrossAmountCents / 100;
           return {
             jobTypeId: item.jobTypeId,
             name: item.jobType.name,
@@ -324,6 +325,7 @@ export class ProfilesService {
             mode: item.jobType.mode,
             durationMinutes: item.jobType.durationMinutes,
             basePrice: basePriceReais,
+            basePriceCents: serviceGrossAmountCents,
             currency: 'BRL',
           };
         }),
