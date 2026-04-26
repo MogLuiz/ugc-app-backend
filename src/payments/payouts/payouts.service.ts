@@ -36,8 +36,8 @@ export type CreatorPayoutResponseDto = {
   createdAt: Date;
   updatedAt: Date;
   payment?: {
-    grossAmountCents: number;
-    platformFeeCents: number;
+    creatorNetServiceAmountCents: number;
+    transportFeeAmountCents: number;
     contractRequestId: string;
     gatewayName: string;
   };
@@ -133,8 +133,8 @@ export class PayoutsService {
       updatedAt: payout.updatedAt,
       ...(payout.payment && {
         payment: {
-          grossAmountCents: payout.payment.grossAmountCents,
-          platformFeeCents: payout.payment.platformFeeCents,
+          creatorNetServiceAmountCents: payout.payment.creatorNetServiceAmountCents,
+          transportFeeAmountCents: payout.payment.transportFeeAmountCents,
           contractRequestId: payout.payment.contractRequestId,
           gatewayName: payout.payment.gatewayName,
         },

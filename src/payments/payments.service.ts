@@ -84,8 +84,8 @@ export class PaymentsService {
         throw new ConflictException('Este contrato já foi pago');
       }
       // Se a preferência ainda não foi criada (falha anterior), tenta novamente
-      if (!existing.externalPreferenceId && existing.creditAppliedCents < existing.grossAmountCents) {
-        const remainderCents = existing.grossAmountCents - existing.creditAppliedCents;
+      if (!existing.externalPreferenceId && existing.creditAppliedCents < existing.companyTotalAmountCents) {
+        const remainderCents = existing.companyTotalAmountCents - existing.creditAppliedCents;
         const frontendBase = this.configService.get<string>('FRONTEND_BASE_URL') ?? '';
         const intent = await this.provider.createPaymentIntent({
           paymentId: existing.id,
@@ -108,31 +108,37 @@ export class PaymentsService {
       return this.buildInitiateResponse(existing);
     }
 
-    // 4. Congela snapshot financeiro em centavos
-    const grossAmountCents       = Math.round((contract.totalPrice      ?? 0) * 100);
-    const platformFeeCents       = Math.round((contract.platformFee     ?? 0) * 100);
-    const creatorBaseAmountCents = Math.round((contract.creatorBasePrice ?? 0) * 100);
-    const transportFeeCents      = Math.round((contract.transportFee    ?? 0) * 100);
-    const creatorNetAmountCents  = creatorBaseAmountCents + transportFeeCents;
+    // 4. Copia snapshot financeiro do ContractRequest — sem recalcular.
+    const serviceGrossAmountCents       = contract.serviceGrossAmountCents;
+    const platformFeeAmountCents        = contract.platformFeeAmountCents;
+    const creatorNetServiceAmountCents  = contract.creatorNetServiceAmountCents;
+    const transportFeeAmountCents       = contract.transportFeeAmountCents;
+    const creatorPayoutAmountCents      = contract.creatorPayoutAmountCents;
+    const companyTotalAmountCents       = contract.companyTotalAmountCents;
 
     // 5. Verifica crédito disponível
     const balance = await this.companyBalanceService.getBalance(user.id);
-    const creditToApply = Math.min(balance?.availableCents ?? 0, grossAmountCents);
-    const remainderCents = grossAmountCents - creditToApply;
+    const creditToApply = Math.min(balance?.availableCents ?? 0, companyTotalAmountCents);
+    const remainderCents = companyTotalAmountCents - creditToApply;
+
+    const paymentBase = {
+      contractRequestId: contract.id,
+      companyUserId: contract.companyUserId,
+      creatorUserId: contract.creatorUserId,
+      serviceGrossAmountCents,
+      platformFeeAmountCents,
+      creatorNetServiceAmountCents,
+      transportFeeAmountCents,
+      creatorPayoutAmountCents,
+      companyTotalAmountCents,
+      currency: contract.currency,
+    };
 
     // 6. Caso 100% coberto por crédito — confirmar diretamente sem MP
     if (remainderCents === 0 && creditToApply > 0) {
       return this.dataSource.transaction(async (manager) => {
         const payment = manager.getRepository(Payment).create({
-          contractRequestId: contract.id,
-          companyUserId: contract.companyUserId,
-          creatorUserId: contract.creatorUserId,
-          grossAmountCents,
-          platformFeeCents,
-          creatorBaseAmountCents,
-          transportFeeCents,
-          creatorNetAmountCents,
-          currency: contract.currency,
+          ...paymentBase,
           status: PaymentStatus.PAID,
           payoutStatus: PayoutStatus.PENDING,
           settlementStatus: SettlementStatus.HELD,
@@ -149,7 +155,7 @@ export class PaymentsService {
         const payout = manager.getRepository(CreatorPayout).create({
           paymentId: savedPayment.id,
           creatorUserId: contract.creatorUserId,
-          amountCents: creatorNetAmountCents,
+          amountCents: creatorPayoutAmountCents,
           currency: contract.currency,
           status: PayoutStatus.PENDING,
         });
@@ -172,15 +178,7 @@ export class PaymentsService {
 
     // 7. Cria Payment (com crédito parcial ou sem crédito)
     const payment = this.paymentRepo.create({
-      contractRequestId: contract.id,
-      companyUserId: contract.companyUserId,
-      creatorUserId: contract.creatorUserId,
-      grossAmountCents,
-      platformFeeCents,
-      creatorBaseAmountCents,
-      transportFeeCents,
-      creatorNetAmountCents,
-      currency: contract.currency,
+      ...paymentBase,
       status: PaymentStatus.PENDING,
       payoutStatus: PayoutStatus.NOT_DUE,
       settlementStatus: SettlementStatus.HELD,
@@ -211,7 +209,7 @@ export class PaymentsService {
     await this.paymentRepo.save(savedPayment);
 
     this.logger.log(
-      `Pagamento iniciado: paymentId=${savedPayment.id} gross=${grossAmountCents} credit=${creditToApply} remainder=${remainderCents}`,
+      `Pagamento iniciado: paymentId=${savedPayment.id} total=${companyTotalAmountCents} credit=${creditToApply} remainder=${remainderCents}`,
     );
 
     return this.buildInitiateResponse(savedPayment);
@@ -283,16 +281,17 @@ export class PaymentsService {
 
   private buildInitiateResponse(payment: Payment): InitiatePaymentResponseDto {
     const mpProvider = this.provider as { getPublicKey?: () => string };
-    const remainderCents = payment.grossAmountCents - payment.creditAppliedCents;
+    const remainderCents = payment.companyTotalAmountCents - payment.creditAppliedCents;
     return {
       paymentId: payment.id,
       preferenceId: payment.externalPreferenceId ?? '',
       publicKey: mpProvider.getPublicKey?.() ?? '',
-      grossAmountCents: payment.grossAmountCents,
-      platformFeeCents: payment.platformFeeCents,
-      creatorBaseAmountCents: payment.creatorBaseAmountCents,
-      transportFeeCents: payment.transportFeeCents,
-      creatorNetAmountCents: payment.creatorNetAmountCents,
+      serviceGrossAmountCents: payment.serviceGrossAmountCents,
+      platformFeeAmountCents: payment.platformFeeAmountCents,
+      creatorNetServiceAmountCents: payment.creatorNetServiceAmountCents,
+      transportFeeAmountCents: payment.transportFeeAmountCents,
+      creatorPayoutAmountCents: payment.creatorPayoutAmountCents,
+      companyTotalAmountCents: payment.companyTotalAmountCents,
       currency: payment.currency,
       creditAppliedCents: payment.creditAppliedCents,
       remainderCents,
@@ -315,11 +314,12 @@ export class PaymentsService {
     return {
       id: payment.id,
       contractRequestId: payment.contractRequestId,
-      grossAmountCents: payment.grossAmountCents,
-      platformFeeCents: payment.platformFeeCents,
-      creatorBaseAmountCents: payment.creatorBaseAmountCents,
-      transportFeeCents: payment.transportFeeCents,
-      creatorNetAmountCents: payment.creatorNetAmountCents,
+      serviceGrossAmountCents: payment.serviceGrossAmountCents,
+      platformFeeAmountCents: payment.platformFeeAmountCents,
+      creatorNetServiceAmountCents: payment.creatorNetServiceAmountCents,
+      transportFeeAmountCents: payment.transportFeeAmountCents,
+      creatorPayoutAmountCents: payment.creatorPayoutAmountCents,
+      companyTotalAmountCents: payment.companyTotalAmountCents,
       creditAppliedCents: payment.creditAppliedCents,
       currency: payment.currency,
       status: payment.status,

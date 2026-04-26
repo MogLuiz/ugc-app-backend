@@ -20,6 +20,7 @@ import { SchedulingConflictService } from '../scheduling/scheduling-conflict.ser
 import { ContractRequestsService } from '../contract-requests/contract-requests.service';
 import { DistanceService } from '../contract-requests/services/distance.service';
 import { PricingService } from '../contract-requests/services/pricing.service';
+import { FinancialSnapshotService } from '../contract-requests/services/financial-snapshot.service';
 import { OpenOffersRepository } from './open-offers.repository';
 import { OpenOfferApplication } from './entities/open-offer-application.entity';
 import { CreateOpenOfferDto } from './dto/create-open-offer.dto';
@@ -54,6 +55,7 @@ export class OpenOffersService {
     private readonly contractRequestsService: ContractRequestsService,
     private readonly configService: ConfigService,
     private readonly legalService: LegalService,
+    private readonly financialSnapshotService: FinancialSnapshotService,
   ) {}
 
   async create(authUser: AuthUser, dto: CreateOpenOfferDto) {
@@ -81,7 +83,9 @@ export class OpenOffersService {
       throw new BadRequestException('expiresAt deve ser anterior a startsAt');
     }
 
-    if (dto.offeredAmount < jobType.minimumOfferedAmount) {
+    const offeredAmountCents = Math.round(dto.offeredAmount * 100);
+    const minimumCents = Math.round(jobType.minimumOfferedAmount * 100);
+    if (offeredAmountCents < minimumCents) {
       throw new BadRequestException(
         `O valor mínimo para este tipo de job é R$ ${jobType.minimumOfferedAmount.toFixed(2)}`,
       );
@@ -95,6 +99,13 @@ export class OpenOffersService {
       });
     }
 
+    const settings = await this.platformSettingsService.getCurrent();
+    const platformFeeBps = settings?.platformFeeBps ?? 2500;
+    const serviceSnapshot = this.financialSnapshotService.buildServiceSnapshot(
+      offeredAmountCents,
+      platformFeeBps,
+    );
+
     const offer = await this.openOffersRepository.create({
       companyUserId: company.id,
       jobTypeId: dto.jobTypeId,
@@ -105,11 +116,9 @@ export class OpenOffersService {
       jobFormattedAddress: geocoded.normalizedAddress ?? null,
       jobLatitude: geocoded.lat,
       jobLongitude: geocoded.lng,
-      offeredAmount: dto.offeredAmount,
+      ...serviceSnapshot,
       expiresAt,
       status: OpenOfferStatus.OPEN,
-      platformFeeRateSnapshot: jobType.platformFeeRate,
-      minimumOfferedAmountSnapshot: jobType.minimumOfferedAmount,
     });
 
     return this.buildOfferPayload(offer, jobType);
@@ -349,7 +358,8 @@ export class OpenOffersService {
             id: app.openOffer.id,
             status: app.openOffer.status,
             startsAt: app.openOffer.startsAt,
-            offeredAmount: app.openOffer.offeredAmount,
+            serviceGrossAmountCents: app.openOffer.serviceGrossAmountCents,
+            creatorNetServiceAmountCents: app.openOffer.creatorNetServiceAmountCents,
             jobType: app.openOffer.jobType?.name ?? null,
           }
         : null,
@@ -447,13 +457,19 @@ export class OpenOffersService {
         settings?.transportMinimumFee ??
         (this.configService.get<number>('MIN_TRANSPORT_PRICE') ?? 20);
 
-      const pricing = this.pricingService.buildPricing({
-        creatorBasePrice: offer.offeredAmount,
+      // Transporte calculado para o creator selecionado.
+      // Taxa usa o snapshot da oferta — NÃO busca taxa global novamente.
+      const transport = this.pricingService.buildTransport({
         distanceKm,
         transportPricePerKm,
         transportMinimumFee,
-        platformFeeRate: offer.platformFeeRateSnapshot,
       });
+
+      const financialSnapshot = this.financialSnapshotService.buildContractSnapshot(
+        offer.serviceGrossAmountCents,
+        offer.platformFeeBpsSnapshot,
+        transport.transportFeeAmountCents,
+      );
 
       // 7. Criar ContractRequest (sempre ACCEPTED) — mesmo manager
       const contractRequest = await this.contractRequestsService.createFromOpenOfferSelection(
@@ -461,7 +477,6 @@ export class OpenOffersService {
           companyUserId: company.id,
           creatorUser,
           jobTypeId: offer.jobTypeId,
-          offeredAmount: offer.offeredAmount,
           openOfferId: offer.id,
           startsAt: offer.startsAt,
           durationMinutes: offer.durationMinutes,
@@ -471,8 +486,8 @@ export class OpenOffersService {
           jobLongitude: offer.jobLongitude,
           distanceKm,
           effectiveServiceRadiusKm,
-          platformFeeRateSnapshot: offer.platformFeeRateSnapshot,
-          pricing,
+          financialSnapshot,
+          transport,
           hiringAcceptance,
         },
         manager,
@@ -546,9 +561,11 @@ export class OpenOffersService {
       startsAt: offer.startsAt,
       durationMinutes: offer.durationMinutes,
       jobFormattedAddress: offer.jobFormattedAddress ?? offer.jobAddress,
-      offeredAmount: offer.offeredAmount,
+      serviceGrossAmountCents: offer.serviceGrossAmountCents,
+      platformFeeBpsSnapshot: offer.platformFeeBpsSnapshot,
+      platformFeeAmountCents: offer.platformFeeAmountCents,
+      creatorNetServiceAmountCents: offer.creatorNetServiceAmountCents,
       expiresAt: offer.expiresAt,
-      platformFeeRateSnapshot: offer.platformFeeRateSnapshot,
       jobType: jobType ? { id: jobType.id, name: jobType.name } : null,
       createdAt: offer.createdAt,
       updatedAt: offer.updatedAt,

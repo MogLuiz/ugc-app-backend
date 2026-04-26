@@ -99,7 +99,7 @@ export class CompanyBalanceService {
       }
 
       const companyUserId = payment.companyUserId;
-      const creditAmountCents = payment.grossAmountCents;
+      const creditAmountCents = payment.companyTotalAmountCents;
 
       // 3. Upsert CompanyBalance com lock pessimista
       let balance = await manager

@@ -4,8 +4,8 @@ export interface ContractRequestCompletedEvent {
   contractRequestId: string;
   creatorUserId: string;
   companyUserId: string;
-  creatorBasePrice: number;
-  totalPrice: number;
+  serviceGrossAmountCents: number;
+  companyTotalAmountCents: number;
   currency: string;
   completedAt: Date;
 }

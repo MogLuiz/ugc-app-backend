@@ -56,7 +56,7 @@ export class CreatorService {
       createdAt: contractRequest.createdAt.toISOString(),
       companyName: this.getCompanyName(contractRequest),
       campaignTitle: contractRequest.jobType?.name?.trim() || 'Campanha',
-      totalPrice: contractRequest.totalPrice,
+      creatorPayoutAmountCents: contractRequest.creatorPayoutAmountCents,
       startsAt: contractRequest.startsAt.toISOString(),
     };
   }

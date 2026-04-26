@@ -335,8 +335,8 @@ describe('ReferralsService', () => {
       contractRequestId: 'cr-1',
       creatorUserId: 'creator-1',
       companyUserId: 'company-1',
-      creatorBasePrice: 250,
-      totalPrice: 300,
+      serviceGrossAmountCents: 25000,
+      companyTotalAmountCents: 30000,
       currency: 'BRL',
       completedAt: new Date('2026-03-28T10:00:00Z'),
     };
@@ -380,10 +380,10 @@ describe('ReferralsService', () => {
       const { service, mocks } = createService();
       setupPendingReferral(mocks);
 
-      await service.handleContractCompleted({ ...baseEvent, creatorBasePrice: 250.99 });
+      await service.handleContractCompleted({ ...baseEvent, serviceGrossAmountCents: 25099 });
 
       expect(mocks.commissionsService.createCommission).toHaveBeenCalledWith(
-        expect.objectContaining({ grossAmountCents: 25099, commissionAmountCents: 2509 }),
+        expect.objectContaining({ grossAmountCents: 25099, commissionAmountCents: 2509 }), // grossAmountCents = serviceGrossAmountCents passado diretamente
         expect.anything(),
       );
     });

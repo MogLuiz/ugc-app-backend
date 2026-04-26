@@ -55,34 +55,23 @@ export class OpenOffer {
   @Column({ name: 'job_longitude', type: 'decimal', precision: 10, scale: 7, transformer: decimalTransformer })
   jobLongitude: number;
 
-  @Column({ name: 'offered_amount', type: 'decimal', precision: 10, scale: 2, transformer: decimalTransformer })
-  offeredAmount: number;
+  @Column({ name: 'service_gross_amount_cents', type: 'int' })
+  serviceGrossAmountCents: number;
+
+  @Column({ name: 'platform_fee_bps_snapshot', type: 'int' })
+  platformFeeBpsSnapshot: number;
+
+  @Column({ name: 'platform_fee_amount_cents', type: 'int' })
+  platformFeeAmountCents: number;
+
+  @Column({ name: 'creator_net_service_amount_cents', type: 'int' })
+  creatorNetServiceAmountCents: number;
 
   @Column({ name: 'expires_at', type: 'timestamptz' })
   expiresAt: Date;
 
   @Column({ type: 'enum', enum: OpenOfferStatus, default: OpenOfferStatus.OPEN })
   status: OpenOfferStatus;
-
-  @Column({
-    name: 'platform_fee_rate_snapshot',
-    type: 'decimal',
-    precision: 5,
-    scale: 4,
-    default: 0,
-    transformer: decimalTransformer,
-  })
-  platformFeeRateSnapshot: number;
-
-  @Column({
-    name: 'minimum_offered_amount_snapshot',
-    type: 'decimal',
-    precision: 10,
-    scale: 2,
-    default: 0,
-    transformer: decimalTransformer,
-  })
-  minimumOfferedAmountSnapshot: number;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

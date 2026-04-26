@@ -4,8 +4,8 @@ const baseEvent = {
   contractRequestId: 'cr-1',
   creatorUserId: 'creator-1',
   companyUserId: 'company-1',
-  creatorBasePrice: 300,
-  totalPrice: 360,
+  serviceGrossAmountCents: 30000,
+  companyTotalAmountCents: 36000,
   currency: 'BRL',
   completedAt: new Date('2026-03-28T12:00:00Z'),
 };

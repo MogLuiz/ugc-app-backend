@@ -19,7 +19,8 @@ import { PlatformSettingsService } from '../platform-settings/platform-settings.
 import { GeocodingService } from '../geocoding/geocoding.service';
 import { ContractRequestsRepository } from './contract-requests.repository';
 import { DistanceService } from './services/distance.service';
-import { PricingService } from './services/pricing.service';
+import { PricingService, TransportPricing } from './services/pricing.service';
+import { FinancialSnapshotService, ContractSnapshot } from './services/financial-snapshot.service';
 import { SchedulingConflictService } from '../scheduling/scheduling-conflict.service';
 import { parseDateOrThrow } from '../common/utils/scheduling-time.util';
 import { JobMode } from '../common/enums/job-mode.enum';
@@ -60,16 +61,14 @@ type PreparedContractRequest = {
   effectiveServiceRadiusKm: number;
   durationMinutes: number;
   description: string;
-  creatorBasePrice: number;
-  platformFeeRateSnapshot: number;
-  pricing: ReturnType<PricingService['buildPricing']>;
+  financialSnapshot: ContractSnapshot;
+  transport: TransportPricing;
 };
 
 export type CreateFromOpenOfferParams = {
   companyUserId: string;
   creatorUser: User;
   jobTypeId: string;
-  offeredAmount: number;
   openOfferId: string;
   startsAt: Date;
   durationMinutes: number;
@@ -79,8 +78,8 @@ export type CreateFromOpenOfferParams = {
   jobLongitude: number;
   distanceKm: number;
   effectiveServiceRadiusKm: number;
-  platformFeeRateSnapshot: number;
-  pricing: ReturnType<PricingService['buildPricing']>;
+  financialSnapshot: ContractSnapshot;
+  transport: TransportPricing;
   hiringAcceptance: LegalAcceptance;
 };
 
@@ -120,6 +119,7 @@ export class ContractRequestsService {
     private readonly contractRequestsRepository: ContractRequestsRepository,
     private readonly distanceService: DistanceService,
     private readonly pricingService: PricingService,
+    private readonly financialSnapshotService: FinancialSnapshotService,
     private readonly schedulingConflictService: SchedulingConflictService,
     private readonly conversationsService: ConversationsService,
     private readonly eventEmitter: EventEmitter2,
@@ -129,6 +129,7 @@ export class ContractRequestsService {
 
   async preview(user: AuthUser, dto: PreviewContractRequestDto) {
     const prepared = await this.prepareContractRequest(user, dto);
+    const snap = prepared.financialSnapshot;
 
     return {
       mode: JobMode.PRESENTIAL,
@@ -145,7 +146,14 @@ export class ContractRequestsService {
         prepared.distanceKm,
         prepared.effectiveServiceRadiusKm,
       ),
-      ...prepared.pricing,
+      serviceGrossAmountCents: snap.serviceGrossAmountCents,
+      platformFeeBpsSnapshot: snap.platformFeeBpsSnapshot,
+      platformFeeAmountCents: snap.platformFeeAmountCents,
+      creatorNetServiceAmountCents: snap.creatorNetServiceAmountCents,
+      transportFeeAmountCents: snap.transportFeeAmountCents,
+      creatorPayoutAmountCents: snap.creatorPayoutAmountCents,
+      companyTotalAmountCents: snap.companyTotalAmountCents,
+      transportIsMinimumApplied: prepared.transport.transportIsMinimumApplied,
     };
   }
 
@@ -177,7 +185,7 @@ export class ContractRequestsService {
           description: prepared.description,
           status: ContractRequestStatus.PENDING_PAYMENT,
           paymentStatus: PaymentStatus.PENDING,
-          currency: prepared.pricing.currency,
+          currency: 'BRL',
           termsAcceptedAt: hiringAcceptance.acceptedAt,
           hiringTermsVersion: hiringAcceptance.termVersion,
           hiringTermsAcceptedAt: hiringAcceptance.acceptedAt,
@@ -190,15 +198,11 @@ export class ContractRequestsService {
           jobLongitude: prepared.jobLongitude,
           distanceKm: prepared.distanceKm,
           effectiveServiceRadiusKmUsed: prepared.effectiveServiceRadiusKm,
-          transportFee: prepared.pricing.transportFee,
-          creatorBasePrice: prepared.pricing.creatorBasePrice,
-          platformFee: prepared.pricing.platformFee,
-          totalPrice: prepared.pricing.totalPrice,
-          transportPricePerKmUsed: prepared.pricing.transportPricePerKmUsed,
-          transportMinimumFeeUsed: prepared.pricing.transportMinimumFeeUsed,
+          ...prepared.financialSnapshot,
+          transportPricePerKmUsed: prepared.transport.transportPricePerKmUsed,
+          transportMinimumFeeUsed: prepared.transport.transportMinimumFeeUsed,
           creatorNameSnapshot: prepared.creatorUser.profile?.name ?? 'Creator',
           creatorAvatarUrlSnapshot: prepared.creatorUser.profile?.photoUrl ?? null,
-          platformFeeRateSnapshot: prepared.platformFeeRateSnapshot,
           openOfferId: null,
           rejectionReason: null,
           expiresAt,
@@ -426,8 +430,8 @@ export class ContractRequestsService {
           contractRequestId: updated.id,
           creatorUserId: updated.creatorUserId,
           companyUserId: updated.companyUserId,
-          creatorBasePrice: updated.creatorBasePrice,
-          totalPrice: updated.totalPrice,
+          serviceGrossAmountCents: updated.serviceGrossAmountCents,
+          companyTotalAmountCents: updated.companyTotalAmountCents,
           currency: updated.currency,
           completedAt,
         } satisfies ContractRequestCompletedEvent,
@@ -492,8 +496,8 @@ export class ContractRequestsService {
           contractRequestId: contractRequest.id,
           creatorUserId: contractRequest.creatorUserId,
           companyUserId: contractRequest.companyUserId,
-          creatorBasePrice: contractRequest.creatorBasePrice,
-          totalPrice: contractRequest.totalPrice,
+          serviceGrossAmountCents: contractRequest.serviceGrossAmountCents,
+          companyTotalAmountCents: contractRequest.companyTotalAmountCents,
           currency: contractRequest.currency,
           completedAt: now,
         };
@@ -556,7 +560,7 @@ export class ContractRequestsService {
     params: CreateFromOpenOfferParams,
     manager: EntityManager,
   ): Promise<ContractRequest> {
-    const { creatorUser, pricing, platformFeeRateSnapshot, openOfferId, ...rest } = params;
+    const { creatorUser, financialSnapshot, transport, openOfferId, ...rest } = params;
 
     const created = await this.contractRequestsRepository.createAndSave(
       {
@@ -565,21 +569,17 @@ export class ContractRequestsService {
         mode: JobMode.PRESENTIAL,
         status: ContractRequestStatus.ACCEPTED,
         paymentStatus: PaymentStatus.PENDING,
-        currency: pricing.currency,
+        currency: 'BRL',
         termsAcceptedAt: params.hiringAcceptance.acceptedAt,
         hiringTermsVersion: params.hiringAcceptance.termVersion,
         hiringTermsAcceptedAt: params.hiringAcceptance.acceptedAt,
         hiringTermsAcceptanceId: params.hiringAcceptance.id,
         effectiveServiceRadiusKmUsed: params.effectiveServiceRadiusKm,
-        transportFee: pricing.transportFee,
-        creatorBasePrice: pricing.creatorBasePrice,
-        platformFee: pricing.platformFee,
-        totalPrice: pricing.totalPrice,
-        transportPricePerKmUsed: pricing.transportPricePerKmUsed,
-        transportMinimumFeeUsed: pricing.transportMinimumFeeUsed,
+        ...financialSnapshot,
+        transportPricePerKmUsed: transport.transportPricePerKmUsed,
+        transportMinimumFeeUsed: transport.transportMinimumFeeUsed,
         creatorNameSnapshot: creatorUser.profile?.name ?? 'Creator',
         creatorAvatarUrlSnapshot: creatorUser.profile?.photoUrl ?? null,
-        platformFeeRateSnapshot,
         openOfferId,
         rejectionReason: null,
       },
@@ -635,11 +635,6 @@ export class ContractRequestsService {
         'O creator não possui este tipo de job disponível',
       );
     }
-    const creatorBasePriceReais =
-      creatorJobType.basePriceCents != null
-        ? creatorJobType.basePriceCents / 100
-        : jobType.price;
-
     const geocoded = await this.resolveJobAddressGeocoding(companyUser.id, dto);
     if (!geocoded) {
       this.logger.warn(`Geocoding failed for job address: ${dto.jobAddress}`);
@@ -724,14 +719,25 @@ export class ContractRequestsService {
     const transportMinimumFee =
       settings?.transportMinimumFee ??
       (this.configService.get<number>('MIN_TRANSPORT_PRICE') ?? 20);
+    const platformFeeBps =
+      settings?.platformFeeBps ?? 2500;
 
-    const pricing = this.pricingService.buildPricing({
-      creatorBasePrice: creatorBasePriceReais,
+    const serviceGrossAmountCents =
+      creatorJobType.basePriceCents != null
+        ? creatorJobType.basePriceCents
+        : Math.round(jobType.price * 100);
+
+    const transport = this.pricingService.buildTransport({
       distanceKm,
       transportPricePerKm,
       transportMinimumFee,
-      platformFeeRate: jobType.platformFeeRate,
     });
+
+    const financialSnapshot = this.financialSnapshotService.buildContractSnapshot(
+      serviceGrossAmountCents,
+      platformFeeBps,
+      transport.transportFeeAmountCents,
+    );
 
     return {
       companyUser,
@@ -746,9 +752,8 @@ export class ContractRequestsService {
       effectiveServiceRadiusKm: serviceRadiusKm,
       durationMinutes: jobType.durationMinutes,
       description: dto.description.trim(),
-      creatorBasePrice: creatorBasePriceReais,
-      platformFeeRateSnapshot: jobType.platformFeeRate,
-      pricing,
+      financialSnapshot,
+      transport,
     };
   }
 
@@ -857,16 +862,18 @@ export class ContractRequestsService {
         contractRequest.effectiveServiceRadiusKmUsed,
       ),
       transport: {
-        price: contractRequest.transportFee,
-        formatted: this.formatCurrency(contractRequest.transportFee, contractRequest.currency),
+        price: contractRequest.transportFeeAmountCents / 100,
+        formatted: this.formatCurrency(contractRequest.transportFeeAmountCents / 100, contractRequest.currency),
         isMinimumApplied:
-          contractRequest.transportFee === contractRequest.transportMinimumFeeUsed,
+          contractRequest.transportFeeAmountCents === Math.round((contractRequest.transportMinimumFeeUsed ?? 0) * 100),
       },
-      transportFee: contractRequest.transportFee,
-      creatorBasePrice: contractRequest.creatorBasePrice,
-      platformFee: contractRequest.platformFee,
-      totalPrice: contractRequest.totalPrice,
-      totalAmount: contractRequest.totalPrice,
+      serviceGrossAmountCents: contractRequest.serviceGrossAmountCents,
+      platformFeeBpsSnapshot: contractRequest.platformFeeBpsSnapshot,
+      platformFeeAmountCents: contractRequest.platformFeeAmountCents,
+      creatorNetServiceAmountCents: contractRequest.creatorNetServiceAmountCents,
+      transportFeeAmountCents: contractRequest.transportFeeAmountCents,
+      creatorPayoutAmountCents: contractRequest.creatorPayoutAmountCents,
+      companyTotalAmountCents: contractRequest.companyTotalAmountCents,
       transportPricePerKmUsed: contractRequest.transportPricePerKmUsed,
       transportMinimumFeeUsed: contractRequest.transportMinimumFeeUsed,
       creatorNameSnapshot: contractRequest.creatorNameSnapshot,
@@ -920,9 +927,9 @@ export class ContractRequestsService {
         state,
       },
       pricing: {
-        totalAmount: contractRequest.totalPrice,
-        baseAmount: contractRequest.creatorBasePrice,
-        transportAmount: contractRequest.transportFee,
+        totalAmount: contractRequest.companyTotalAmountCents,
+        baseAmount: contractRequest.serviceGrossAmountCents,
+        transportAmount: contractRequest.transportFeeAmountCents,
       },
       metadata: {
         createdAt: contractRequest.createdAt?.toISOString() ?? null,
@@ -930,7 +937,7 @@ export class ContractRequestsService {
       },
       actions: this.buildCampaignActions(status),
       jobTypeName: jobTitle,
-      totalAmount: contractRequest.totalPrice,
+      totalAmount: contractRequest.companyTotalAmountCents,
     };
   }
 
@@ -974,8 +981,11 @@ export class ContractRequestsService {
     const rawReviewCount = companyUser?.profile?.reviewCount;
     const companyReviewCount = rawReviewCount != null ? rawReviewCount : null;
 
+    // Creator não deve ver taxa da plataforma nem valor bruto do serviço.
+    const { platformFeeAmountCents: _fee, platformFeeBpsSnapshot: _bps, serviceGrossAmountCents: _gross, ...creatorBase } = base;
+
     return {
-      ...base,
+      ...creatorBase,
       status: statusMap[contractRequest.status],
       companyName,
       companyLogoUrl,
@@ -984,7 +994,7 @@ export class ContractRequestsService {
       jobTypeName: contractRequest.jobType?.name ?? null,
       expiresSoon,
       expiresAt: expiresAt.toISOString(),
-      totalAmount: contractRequest.totalPrice,
+      totalAmount: contractRequest.creatorPayoutAmountCents,
     };
   }
 

@@ -133,41 +133,26 @@ export class ContractRequest {
   })
   effectiveServiceRadiusKmUsed: number | null;
 
-  @Column({
-    name: 'transport_fee',
-    type: 'decimal',
-    precision: 10,
-    scale: 2,
-    transformer: decimalTransformer,
-  })
-  transportFee: number;
+  @Column({ name: 'service_gross_amount_cents', type: 'int' })
+  serviceGrossAmountCents: number;
 
-  @Column({
-    name: 'creator_base_price',
-    type: 'decimal',
-    precision: 10,
-    scale: 2,
-    transformer: decimalTransformer,
-  })
-  creatorBasePrice: number;
+  @Column({ name: 'platform_fee_bps_snapshot', type: 'int' })
+  platformFeeBpsSnapshot: number;
 
-  @Column({
-    name: 'platform_fee',
-    type: 'decimal',
-    precision: 10,
-    scale: 2,
-    transformer: decimalTransformer,
-  })
-  platformFee: number;
+  @Column({ name: 'platform_fee_amount_cents', type: 'int' })
+  platformFeeAmountCents: number;
 
-  @Column({
-    name: 'total_price',
-    type: 'decimal',
-    precision: 10,
-    scale: 2,
-    transformer: decimalTransformer,
-  })
-  totalPrice: number;
+  @Column({ name: 'creator_net_service_amount_cents', type: 'int' })
+  creatorNetServiceAmountCents: number;
+
+  @Column({ name: 'transport_fee_amount_cents', type: 'int' })
+  transportFeeAmountCents: number;
+
+  @Column({ name: 'creator_payout_amount_cents', type: 'int' })
+  creatorPayoutAmountCents: number;
+
+  @Column({ name: 'company_total_amount_cents', type: 'int' })
+  companyTotalAmountCents: number;
 
   @Column({
     name: 'transport_price_per_km_used',
@@ -203,16 +188,6 @@ export class ContractRequest {
 
   @Column({ name: 'completed_at', type: 'timestamptz', nullable: true })
   completedAt: Date | null;
-
-  @Column({
-    name: 'platform_fee_rate_snapshot',
-    type: 'decimal',
-    precision: 5,
-    scale: 4,
-    nullable: true,
-    transformer: decimalTransformer,
-  })
-  platformFeeRateSnapshot: number | null;
 
   @Column({ name: 'open_offer_id', type: 'uuid', nullable: true })
   openOfferId: string | null;

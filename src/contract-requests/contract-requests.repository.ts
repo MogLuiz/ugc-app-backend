@@ -146,12 +146,12 @@ export class ContractRequestsRepository {
 
     const sumRow = await this.repo
       .createQueryBuilder('cr')
-      .select('COALESCE(SUM(cr.total_price), 0)', 'sum')
+      .select('COALESCE(SUM(cr.creator_payout_amount_cents), 0)', 'sum')
       .where('cr.creator_user_id = :creatorUserId', { creatorUserId })
       .andWhere('cr.status = :status', { status: ContractRequestStatus.ACCEPTED })
       .getRawOne<{ sum: string }>();
 
-    const earningsSumAccepted = parseFloat(sumRow?.sum ?? '0');
+    const earningsSumAccepted = parseInt(sumRow?.sum ?? '0', 10);
     return {
       confirmedCampaigns,
       pendingInvites,

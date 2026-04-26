@@ -171,7 +171,7 @@ export class WebhooksService {
         const payout = manager.create(CreatorPayout, {
           paymentId: payment.id,
           creatorUserId: payment.creatorUserId,
-          amountCents: payment.creatorNetAmountCents,
+          amountCents: payment.creatorPayoutAmountCents,
           currency: payment.currency,
           status: PayoutStatus.PENDING,
         });

@@ -6,33 +6,31 @@ export class InitiatePaymentResponseDto {
   paymentId: string;
   preferenceId: string;
   publicKey: string;
-  grossAmountCents: number;
-  platformFeeCents: number;
-  creatorBaseAmountCents: number;
-  transportFeeCents: number;
-  creatorNetAmountCents: number;
+  serviceGrossAmountCents: number;
+  platformFeeAmountCents: number;
+  creatorNetServiceAmountCents: number;
+  transportFeeAmountCents: number;
+  creatorPayoutAmountCents: number;
+  companyTotalAmountCents: number;
   currency: string;
-  /** Crédito de saldo aplicado (em centavos). 0 se não houver crédito. */
   creditAppliedCents: number;
-  /** Valor a cobrar no gateway (gross - credit). 0 se 100% coberto por crédito. */
   remainderCents: number;
-  /** true se o pagamento já foi confirmado (100% crédito, sem necessidade do Brick). */
   alreadyPaid: boolean;
 }
 
 export class PaymentResponseDto {
   id: string;
   contractRequestId: string;
-  grossAmountCents: number;
-  platformFeeCents: number;
-  creatorBaseAmountCents: number;
-  transportFeeCents: number;
-  creatorNetAmountCents: number;
+  serviceGrossAmountCents: number;
+  platformFeeAmountCents: number;
+  creatorNetServiceAmountCents: number;
+  transportFeeAmountCents: number;
+  creatorPayoutAmountCents: number;
+  companyTotalAmountCents: number;
   creditAppliedCents: number;
   currency: string;
   status: PaymentStatus;
   payoutStatus: PayoutStatus;
-  /** null em pagamentos antigos sem settlement ainda registrado. */
   settlementStatus: SettlementStatus | null;
   gatewayName: string;
   paymentMethod: string | null;

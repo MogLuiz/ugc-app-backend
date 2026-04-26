@@ -40,30 +40,31 @@ export class Payment {
   creatorUserId: string;
 
   /**
-   * Snapshot financeiro congelado em centavos no momento da criação.
-   * Nunca relido do ContractRequest — imutável após criação.
+   * Snapshot financeiro congelado em centavos — copiado do ContractRequest na criação.
+   * Nunca recalculado após criação.
    *
    * Invariantes garantidas por CHECK no banco:
-   *   creatorNetAmountCents = creatorBaseAmountCents + transportFeeCents
-   *   grossAmountCents      = platformFeeCents + creatorBaseAmountCents + transportFeeCents
+   *   creator_net_service_amount_cents = service_gross_amount_cents - platform_fee_amount_cents
+   *   creator_payout_amount_cents      = creator_net_service_amount_cents + transport_fee_amount_cents
+   *   company_total_amount_cents       = service_gross_amount_cents + transport_fee_amount_cents
    */
-  @Column({ name: 'gross_amount_cents', type: 'int' })
-  grossAmountCents: number;
+  @Column({ name: 'service_gross_amount_cents', type: 'int' })
+  serviceGrossAmountCents: number;
 
-  @Column({ name: 'platform_fee_cents', type: 'int' })
-  platformFeeCents: number;
+  @Column({ name: 'platform_fee_amount_cents', type: 'int' })
+  platformFeeAmountCents: number;
 
-  /** Valor do serviço do creator (sem frete). */
-  @Column({ name: 'creator_base_amount_cents', type: 'int' })
-  creatorBaseAmountCents: number;
+  @Column({ name: 'creator_net_service_amount_cents', type: 'int' })
+  creatorNetServiceAmountCents: number;
 
-  /** Taxa de deslocamento (frete). Zero para contratos remotos ou legados sem breakdown. */
-  @Column({ name: 'transport_fee_cents', type: 'int' })
-  transportFeeCents: number;
+  @Column({ name: 'transport_fee_amount_cents', type: 'int' })
+  transportFeeAmountCents: number;
 
-  /** creatorBaseAmountCents + transportFeeCents. Total devido ao creator. */
-  @Column({ name: 'creator_net_amount_cents', type: 'int' })
-  creatorNetAmountCents: number;
+  @Column({ name: 'creator_payout_amount_cents', type: 'int' })
+  creatorPayoutAmountCents: number;
+
+  @Column({ name: 'company_total_amount_cents', type: 'int' })
+  companyTotalAmountCents: number;
 
   @Column({ type: 'varchar', length: 3, default: 'BRL' })
   currency: string;

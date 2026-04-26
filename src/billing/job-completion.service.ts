@@ -104,8 +104,8 @@ export class JobCompletionService {
       'cr.id',
       'cr.creatorUserId',
       'cr.companyUserId',
-      'cr.creatorBasePrice',
-      'cr.totalPrice',
+      'cr.serviceGrossAmountCents',
+      'cr.companyTotalAmountCents',
       'cr.currency',
     ];
 
@@ -140,7 +140,7 @@ export class JobCompletionService {
       `Auto-concluindo contratos: ${withConfirmation.length} com confirmação, ${withoutConfirmation.length} por aprovação tácita`,
     );
 
-    const complete = async (contract: { id: string; creatorUserId: string; companyUserId: string; creatorBasePrice: number; totalPrice: number; currency: string }, tacitApproval: boolean) => {
+    const complete = async (contract: { id: string; creatorUserId: string; companyUserId: string; serviceGrossAmountCents: number; companyTotalAmountCents: number; currency: string }, tacitApproval: boolean) => {
       try {
         const result = await this.contractRequestRepo.update(
           { id: contract.id, status: ContractRequestStatus.AWAITING_COMPLETION_CONFIRMATION },
@@ -160,8 +160,8 @@ export class JobCompletionService {
             contractRequestId: contract.id,
             creatorUserId: contract.creatorUserId,
             companyUserId: contract.companyUserId,
-            creatorBasePrice: contract.creatorBasePrice,
-            totalPrice: contract.totalPrice,
+            serviceGrossAmountCents: contract.serviceGrossAmountCents,
+            companyTotalAmountCents: contract.companyTotalAmountCents,
             currency: contract.currency,
             completedAt: now,
           } satisfies ContractRequestCompletedEvent);

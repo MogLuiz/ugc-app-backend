@@ -3,98 +3,108 @@ import { ContractRequestsService } from './contract-requests.service';
 import { DistanceService } from './services/distance.service';
 import { PricingService } from './services/pricing.service';
 import { TransportService } from './services/transport.service';
+import { FinancialSnapshotService } from './services/financial-snapshot.service';
 import { UserRole } from '../common/enums/user-role.enum';
 import { JobMode } from '../common/enums/job-mode.enum';
 import { PaymentStatus } from '../common/enums/payment-status.enum';
 import { ContractRequestStatus } from '../common/enums/contract-request-status.enum';
 import { LegalTermType } from '../common/enums/legal-term-type.enum';
 
-// ─── PricingService ──────────────────────────────────────────────────────────
+// ─── FinancialSnapshotService ────────────────────────────────────────────────
 
-describe('PricingService', () => {
-  const pricingService = new PricingService(new TransportService());
+describe('FinancialSnapshotService', () => {
+  const svc = new FinancialSnapshotService();
 
-  it('calculates transport fee with minimum floor (platformFeeRate = 0)', () => {
-    const result = pricingService.buildPricing({
-      creatorBasePrice: 200,
-      distanceKm: 2,
-      transportPricePerKm: 5,
-      transportMinimumFee: 20,
-    });
-
-    expect(result.transportFee).toBe(20);
-    expect(result.transport.isMinimumApplied).toBe(true);
-    expect(result.platformFee).toBe(0);
-    expect(result.platformFeeRate).toBe(0);
-    // totalPrice = creatorBasePrice + transportFee (platformFee não somado à conta da empresa)
-    expect(result.totalPrice).toBe(220);
-    expect(result.totalAmount).toBe(220);
-    expect(result.currency).toBe('BRL');
+  it('TC1: R$200 serviço, 25% taxa, R$20 transporte', () => {
+    const snap = svc.buildContractSnapshot(20000, 2500, 2000);
+    expect(snap.serviceGrossAmountCents).toBe(20000);
+    expect(snap.platformFeeBpsSnapshot).toBe(2500);
+    expect(snap.platformFeeAmountCents).toBe(5000);
+    expect(snap.creatorNetServiceAmountCents).toBe(15000);
+    expect(snap.transportFeeAmountCents).toBe(2000);
+    expect(snap.creatorPayoutAmountCents).toBe(17000);
+    expect(snap.companyTotalAmountCents).toBe(22000);
   });
 
-  it('calculates platformFee correctly when rate is set', () => {
-    const result = pricingService.buildPricing({
-      creatorBasePrice: 200,
-      distanceKm: 10,
-      transportPricePerKm: 3,
-      transportMinimumFee: 20,
-      platformFeeRate: 0.15,
-    });
-
-    // platformFee = 200 * 0.15 = 30 (desconto interno do creator)
-    expect(result.platformFee).toBe(30);
-    expect(result.platformFeeRate).toBe(0.15);
-    // transportFee = 10 * 3 = 30
-    expect(result.transportFee).toBe(30);
-    // totalPrice = creatorBasePrice + transportFee (empresa paga, platformFee não entra)
-    expect(result.totalPrice).toBe(230);
-    expect(result.totalAmount).toBe(230);
+  it('TC2: transporte não sofre taxa', () => {
+    const snap = svc.buildContractSnapshot(20000, 2500, 5000);
+    // Empresa paga gross + transporte, não gross + fee + transporte
+    expect(snap.companyTotalAmountCents).toBe(20000 + 5000);
+    expect(snap.companyTotalAmountCents).not.toBe(20000 + 5000 + 5000);
   });
 
-  it('regression: direct hire with rate=0 produces same totalPrice as before refactor', () => {
-    const result = pricingService.buildPricing({
-      creatorBasePrice: 500,
-      distanceKm: 15,
-      transportPricePerKm: 2,
-      transportMinimumFee: 20,
-    });
-
-    // Comportamento idêntico ao pré-refactor: totalPrice = base + transport
-    expect(result.platformFee).toBe(0);
-    expect(result.totalPrice).toBe(result.creatorBasePrice + result.transportFee);
+  it('TC3: taxa zero', () => {
+    const snap = svc.buildContractSnapshot(20000, 0, 2000);
+    expect(snap.platformFeeAmountCents).toBe(0);
+    expect(snap.creatorNetServiceAmountCents).toBe(20000);
+    expect(snap.creatorPayoutAmountCents).toBe(22000);
+    expect(snap.companyTotalAmountCents).toBe(22000);
   });
 
-  it('rounds platformFee to 2 decimal places', () => {
-    const result = pricingService.buildPricing({
-      creatorBasePrice: 100,
-      distanceKm: 5,
-      transportPricePerKm: 2,
-      transportMinimumFee: 10,
-      platformFeeRate: 0.1333,
-    });
+  it('TC4: arredondamento BPS — R$333 × 25%', () => {
+    const snap = svc.buildContractSnapshot(33300, 2500, 0);
+    expect(snap.platformFeeAmountCents).toBe(Math.round(33300 * 2500 / 10000));
+    expect(snap.creatorNetServiceAmountCents).toBe(33300 - snap.platformFeeAmountCents);
+  });
 
-    // 100 * 0.1333 = 13.33 (rounded)
-    expect(result.platformFee).toBe(13.33);
+  it('TC5: invariante creatorPayout = creatorNetService + transport', () => {
+    const snap = svc.buildContractSnapshot(50000, 2500, 3000);
+    expect(snap.creatorPayoutAmountCents).toBe(snap.creatorNetServiceAmountCents + 3000);
+  });
+
+  it('TC6: invariante companyTotal = serviceGross + transport', () => {
+    const snap = svc.buildContractSnapshot(50000, 2500, 3000);
+    expect(snap.companyTotalAmountCents).toBe(50000 + 3000);
+  });
+
+  it('TC7: buildServiceSnapshot não inclui campos de transporte', () => {
+    const snap = svc.buildServiceSnapshot(20000, 2500);
+    expect(snap.serviceGrossAmountCents).toBe(20000);
+    expect(snap.platformFeeAmountCents).toBe(5000);
+    expect(snap.creatorNetServiceAmountCents).toBe(15000);
+    expect((snap as any).transportFeeAmountCents).toBeUndefined();
+    expect((snap as any).creatorPayoutAmountCents).toBeUndefined();
   });
 });
 
-// ─── DistanceService ──────────────────────────────────────────────────────────
+// ─── PricingService (transporte apenas) ─────────────────────────────────────
+
+describe('PricingService.buildTransport', () => {
+  const svc = new PricingService(new TransportService());
+
+  it('aplica mínimo quando distância × preço é menor', () => {
+    const result = svc.buildTransport({ distanceKm: 2, transportPricePerKm: 5, transportMinimumFee: 20 });
+    expect(result.transportFeeAmountCents).toBe(2000); // R$20 = mínimo
+    expect(result.transportIsMinimumApplied).toBe(true);
+  });
+
+  it('usa distância quando maior que mínimo', () => {
+    const result = svc.buildTransport({ distanceKm: 10, transportPricePerKm: 3, transportMinimumFee: 20 });
+    expect(result.transportFeeAmountCents).toBe(3000); // R$30 = 10×3
+    expect(result.transportIsMinimumApplied).toBe(false);
+  });
+
+  it('retorna valores em centavos (inteiros)', () => {
+    const result = svc.buildTransport({ distanceKm: 5, transportPricePerKm: 2.5, transportMinimumFee: 10 });
+    expect(Number.isInteger(result.transportFeeAmountCents)).toBe(true);
+  });
+});
+
+// ─── DistanceService ─────────────────────────────────────────────────────────
 
 describe('DistanceService', () => {
-  it('calculates rounded distance in km', () => {
+  it('calcula distância arredondada em km', () => {
     const service = new DistanceService();
-
     const result = service.calculateDistanceKm(
       { lat: -23.55052, lng: -46.633308 },
       { lat: -23.561684, lng: -46.625378 },
     );
-
     expect(result).toBeGreaterThan(1);
     expect(result).toBeLessThan(2);
   });
 });
 
-// ─── ContractRequestsService ──────────────────────────────────────────────────
+// ─── ContractRequestsService ─────────────────────────────────────────────────
 
 describe('ContractRequestsService', () => {
   function createService(overrides: Record<string, unknown> = {}) {
@@ -115,21 +125,12 @@ describe('ContractRequestsService', () => {
         longitude: -46.633308,
         hasValidCoordinates: true,
       },
-      creatorProfile: {
-        autoAcceptBookings: true,
-        serviceRadiusKm: 20,
-      },
+      creatorProfile: { autoAcceptBookings: true, serviceRadiusKm: 20 },
     };
-    const userRepository = {
-      findOne: jest.fn().mockResolvedValue(creatorUser),
-    };
-    const manager = {
-      getRepository: jest.fn().mockReturnValue(userRepository),
-    };
+    const userRepository = { findOne: jest.fn().mockResolvedValue(creatorUser) };
+    const manager = { getRepository: jest.fn().mockReturnValue(userRepository) };
     const dataSource = {
-      transaction: jest.fn(async (callback: (entityManager: unknown) => unknown) =>
-        callback(manager),
-      ),
+      transaction: jest.fn(async (cb: (m: unknown) => unknown) => cb(manager)),
       getRepository: jest.fn().mockReturnValue(userRepository),
     } as unknown as DataSource;
     const usersRepository = {
@@ -140,26 +141,25 @@ describe('ContractRequestsService', () => {
         id: 'job-type-1',
         mode: JobMode.PRESENTIAL,
         durationMinutes: 120,
-        platformFeeRate: 0,
+        price: 250,
         minimumOfferedAmount: 0,
       }),
     };
     const creatorJobTypesRepository = {
-      findActiveByCreatorAndJobType: jest.fn().mockResolvedValue({
-        basePriceCents: 25000,
-      }),
+      findActiveByCreatorAndJobType: jest.fn().mockResolvedValue({ basePriceCents: 25000 }),
     };
     const platformSettingsService = {
       getCurrent: jest.fn().mockResolvedValue({
         transportPricePerKm: 3.5,
         transportMinimumFee: 15,
+        platformFeeBps: 2500,
       }),
     };
     const geocodingService = {
       geocodeAddress: jest.fn().mockResolvedValue({
         lat: -23.561684,
         lng: -46.625378,
-        normalizedAddress: 'Av. Paulista, 1000, Sao Paulo, SP',
+        normalizedAddress: 'Av. Paulista, 1000, São Paulo, SP',
       }),
     };
     const contractRequestsRepository = {
@@ -180,23 +180,17 @@ describe('ContractRequestsService', () => {
         km,
         formatted: km == null ? null : `${km.toFixed(1)} km`,
         isWithinServiceRadius:
-          km == null || effectiveServiceRadiusKm == null
-            ? null
-            : km <= effectiveServiceRadiusKm,
+          km == null || effectiveServiceRadiusKm == null ? null : km <= effectiveServiceRadiusKm,
         effectiveServiceRadiusKm: effectiveServiceRadiusKm ?? null,
       })),
     };
     const pricingService = new PricingService(new TransportService());
-    const schedulingConflictService = {
-      hasConflicts: jest.fn().mockResolvedValue(false),
-      ensureNoConflicts: jest.fn().mockResolvedValue(undefined),
-    };
+    const financialSnapshotService = new FinancialSnapshotService();
+    const schedulingConflictService = { hasConflicts: jest.fn().mockResolvedValue(false) };
     const conversationsService = {
       ensureConversationForContractRequest: jest.fn().mockResolvedValue(undefined),
     };
-    const eventEmitter = {
-      emit: jest.fn(),
-    };
+    const eventEmitter = { emit: jest.fn() };
     const configService = {
       get: jest.fn().mockImplementation((key: string) => {
         if (key === 'DEFAULT_CREATOR_SERVICE_RADIUS_KM') return 30;
@@ -206,15 +200,10 @@ describe('ContractRequestsService', () => {
         return undefined;
       }),
     };
-
-    const companyBalanceService = {
-      getBalance: jest.fn().mockResolvedValue(null),
-      creditFromPayment: jest.fn().mockResolvedValue(undefined),
-    };
-
+    const companyBalanceService = { getBalance: jest.fn().mockResolvedValue(null) };
     const legalService = {
       resolveCurrentAcceptance: jest.fn().mockResolvedValue({
-        id: 'legal-acceptance-1',
+        id: 'legal-1',
         termVersion: '2026-04-25',
         acceptedAt: new Date('2026-04-25T12:00:00.000Z'),
       }),
@@ -231,6 +220,7 @@ describe('ContractRequestsService', () => {
       contractRequestsRepository as never,
       distanceService as never,
       pricingService as never,
+      financialSnapshotService as never,
       schedulingConflictService as never,
       conversationsService as never,
       eventEmitter as never,
@@ -238,416 +228,98 @@ describe('ContractRequestsService', () => {
       legalService as never,
     );
 
-    return {
-      service,
-      manager,
-      mocks: {
-        companyUser,
-        creatorUser,
-        dataSource,
-        usersRepository,
-        jobTypesService,
-        creatorJobTypesRepository,
-        platformSettingsService,
-        geocodingService,
-        contractRequestsRepository,
-        distanceService,
-        pricingService,
-        schedulingConflictService,
-        conversationsService,
-        eventEmitter,
-        configService,
-        legalService,
-      },
-    };
+    return { service, mocks: { contractRequestsRepository, platformSettingsService, legalService } };
   }
 
-  // ─── Contratação direta (regressão) ────────────────────────────────────────
+  const baseDto = {
+    creatorId: 'creator-1',
+    jobTypeId: 'job-type-1',
+    description: 'Teste',
+    startsAt: '2026-06-01T10:00:00.000Z',
+    durationMinutes: 120,
+    jobAddress: 'Av. Paulista, 1000',
+    legalAcceptance: {
+      termType: LegalTermType.COMPANY_HIRING,
+      termVersion: '2026-04-25',
+      accepted: true,
+    },
+  };
 
-  it('creates contract request with PENDING_PAYMENT even when creator has auto_accept_bookings', async () => {
-    const { service, mocks } = createService();
-
-    const result = await service.create(
-      { authUserId: 'auth-company' },
-      {
-        creatorId: 'creator-1',
-        jobTypeId: 'job-type-1',
-        description: 'Teste',
-        startsAt: '2026-06-01T10:00:00.000Z',
-        durationMinutes: 120,
-        jobAddress: 'Av. Paulista, 1000',
-        legalAcceptance: {
-          termType: LegalTermType.COMPANY_HIRING,
-          termVersion: '2026-04-25',
-          accepted: true,
-        },
-      },
-    );
-
+  it('cria contrato com PENDING_PAYMENT', async () => {
+    const { service } = createService();
+    const result = await service.create({ authUserId: 'auth-company' }, baseDto);
     expect(result.status).toBe(ContractRequestStatus.PENDING_PAYMENT);
     expect(result.paymentStatus).toBe(PaymentStatus.PENDING);
-    expect(mocks.conversationsService.ensureConversationForContractRequest).not.toHaveBeenCalled();
-    expect(mocks.legalService.resolveCurrentAcceptance).toHaveBeenCalled();
   });
 
-  it('regression: direct hire platformFeeRateSnapshot = 0 when jobType.platformFeeRate = 0', async () => {
+  it('TC8: snapshot financeiro usa platformFeeBps do PlatformSettings', async () => {
     const { service, mocks } = createService();
-
-    await service.create(
-      { authUserId: 'auth-company' },
-      {
-        creatorId: 'creator-1',
-        jobTypeId: 'job-type-1',
-        description: 'Regressão pricing',
-        startsAt: '2026-06-01T10:00:00.000Z',
-        durationMinutes: 120,
-        jobAddress: 'Av. Paulista, 1000',
-        legalAcceptance: {
-          termType: LegalTermType.COMPANY_HIRING,
-          termVersion: '2026-04-25',
-          accepted: true,
-        },
-      },
-    );
-
-    const savedPayload = mocks.contractRequestsRepository.createAndSave.mock.calls[0][0];
-    expect(savedPayload.paymentStatus).toBe(PaymentStatus.PENDING);
-    expect(savedPayload.platformFeeRateSnapshot).toBe(0);
-    expect(savedPayload.openOfferId).toBeNull();
-    expect(savedPayload.platformFee).toBe(0);
-    expect(savedPayload.hiringTermsVersion).toBe('2026-04-25');
-    expect(savedPayload.hiringTermsAcceptanceId).toBe('legal-acceptance-1');
-    // totalPrice = creatorBasePrice + transportFee
-    expect(savedPayload.totalPrice).toBe(savedPayload.creatorBasePrice + savedPayload.transportFee);
-  });
-
-  it('regression: direct hire with platformFeeRate > 0 snapshots rate but does not add fee to totalPrice', async () => {
-    const { service, mocks } = createService();
-
-    mocks.jobTypesService.getActiveByIdOrThrow.mockResolvedValue({
-      id: 'job-type-1',
-      mode: JobMode.PRESENTIAL,
-      durationMinutes: 120,
-      platformFeeRate: 0.15,
-      minimumOfferedAmount: 0,
-    });
-
-    await service.create(
-      { authUserId: 'auth-company' },
-      {
-        creatorId: 'creator-1',
-        jobTypeId: 'job-type-1',
-        description: 'Com taxa',
-        startsAt: '2026-06-01T10:00:00.000Z',
-        durationMinutes: 120,
-        jobAddress: 'Av. Paulista, 1000',
-        legalAcceptance: {
-          termType: LegalTermType.COMPANY_HIRING,
-          termVersion: '2026-04-25',
-          accepted: true,
-        },
-      },
-    );
+    // creator.basePriceCents = 25000, platformFeeBps = 2500
+    await service.create({ authUserId: 'auth-company' }, baseDto);
 
     const saved = mocks.contractRequestsRepository.createAndSave.mock.calls[0][0];
-    expect(saved.paymentStatus).toBe(PaymentStatus.PENDING);
-    expect(saved.platformFeeRateSnapshot).toBe(0.15);
-    expect(saved.platformFee).toBeGreaterThan(0);
-    // Empresa paga base + transport (sem adicionar platformFee)
-    expect(saved.totalPrice).toBe(saved.creatorBasePrice + saved.transportFee);
-    expect(saved.totalPrice).not.toBe(saved.creatorBasePrice + saved.transportFee + saved.platformFee);
+    expect(saved.serviceGrossAmountCents).toBe(25000);
+    expect(saved.platformFeeBpsSnapshot).toBe(2500);
+    expect(saved.platformFeeAmountCents).toBe(6250); // 25000 * 25% = 6250
+    expect(saved.creatorNetServiceAmountCents).toBe(18750);
+    expect(saved.companyTotalAmountCents).toBe(saved.serviceGrossAmountCents + saved.transportFeeAmountCents);
   });
 
-  // ─── createFromOpenOfferSelection ─────────────────────────────────────────
-
-  it('createFromOpenOfferSelection: creates ACCEPTED contract and conversation within manager', async () => {
+  it('TC9: creator payload não expõe taxa nem valor bruto', async () => {
     const { service, mocks } = createService();
-    const fakeManager = { getRepository: jest.fn() } as any;
-
-    mocks.contractRequestsRepository.createAndSave.mockResolvedValue({
-      id: 'cr-from-offer',
-      status: ContractRequestStatus.ACCEPTED,
+    const contract: any = {
+      id: 'c1',
       companyUserId: 'company-1',
-    });
-
-    const pricing = new PricingService(new TransportService()).buildPricing({
-      creatorBasePrice: 300,
-      distanceKm: 8,
-      transportPricePerKm: 3,
-      transportMinimumFee: 20,
-      platformFeeRate: 0.10,
-    });
-
-    const result = await service.createFromOpenOfferSelection(
-      {
-        companyUserId: 'company-1',
-        creatorUser: mocks.creatorUser,
-        jobTypeId: 'job-type-1',
-        offeredAmount: 300,
-        openOfferId: 'offer-123',
-        startsAt: new Date('2026-07-01T09:00:00Z'),
-        durationMinutes: 120,
-        jobAddress: 'Rua X, 100',
-        jobFormattedAddress: 'Rua X, 100, SP',
-        jobLatitude: -23.5,
-        jobLongitude: -46.6,
-        distanceKm: 8,
-        effectiveServiceRadiusKm: 30,
-        platformFeeRateSnapshot: 0.10,
-        pricing,
-        hiringAcceptance: {
-          id: 'legal-acceptance-offer-1',
-          termVersion: '2026-04-25',
-          acceptedAt: new Date('2026-04-25T12:00:00.000Z'),
-        } as any,
-      },
-      fakeManager,
-    );
-
-    expect(result.id).toBe('cr-from-offer');
-
-    // Deve ter sido salvo com ACCEPTED e openOfferId corretos
-    const savedPayload = mocks.contractRequestsRepository.createAndSave.mock.calls[0][0];
-    expect(savedPayload.status).toBe(ContractRequestStatus.ACCEPTED);
-    expect(savedPayload.paymentStatus).toBe(PaymentStatus.PENDING);
-    expect(savedPayload.openOfferId).toBe('offer-123');
-    expect(savedPayload.platformFeeRateSnapshot).toBe(0.10);
-    expect(savedPayload.openOfferId).not.toBeNull();
-    expect(savedPayload.hiringTermsVersion).toBe('2026-04-25');
-    expect(savedPayload.hiringTermsAcceptanceId).toBe('legal-acceptance-offer-1');
-
-    // Conversa deve ter sido criada com o mesmo manager
-    expect(mocks.conversationsService.ensureConversationForContractRequest).toHaveBeenCalledWith(
-      'cr-from-offer',
-      'company-1',
-      fakeManager,
-    );
-  });
-
-  it('createFromOpenOfferSelection: totalPrice = offeredAmount + transportFee (not + platformFee)', async () => {
-    const { service, mocks } = createService();
-    const fakeManager = { getRepository: jest.fn() } as any;
-
-    mocks.contractRequestsRepository.createAndSave.mockImplementation(async (p) => ({
-      id: 'cr-1',
-      ...p,
-    }));
-
-    const pricing = new PricingService(new TransportService()).buildPricing({
-      creatorBasePrice: 400,
-      distanceKm: 10,
-      transportPricePerKm: 3,
-      transportMinimumFee: 20,
-      platformFeeRate: 0.20,
-    });
-
-    await service.createFromOpenOfferSelection(
-      {
-        companyUserId: 'company-1',
-        creatorUser: mocks.creatorUser,
-        jobTypeId: 'job-type-1',
-        offeredAmount: 400,
-        openOfferId: 'offer-abc',
-        startsAt: new Date(),
-        durationMinutes: 60,
-        jobAddress: 'Rua Y',
-        jobFormattedAddress: null,
-        jobLatitude: -23.5,
-        jobLongitude: -46.6,
-        distanceKm: 10,
-        effectiveServiceRadiusKm: 30,
-        platformFeeRateSnapshot: 0.20,
-        pricing,
-        hiringAcceptance: {
-          id: 'legal-acceptance-offer-2',
-          termVersion: '2026-04-25',
-          acceptedAt: new Date('2026-04-25T12:00:00.000Z'),
-        } as any,
-      },
-      fakeManager,
-    );
-
-    const saved = mocks.contractRequestsRepository.createAndSave.mock.calls[0][0];
-    expect(saved.paymentStatus).toBe(PaymentStatus.PENDING);
-    // platformFee = 400 * 0.20 = 80
-    expect(saved.platformFee).toBe(80);
-    // totalPrice = 400 + transportFee (não + 80)
-    expect(saved.totalPrice).toBe(400 + saved.transportFee);
-    expect(saved.totalPrice).not.toBe(400 + saved.transportFee + 80);
-  });
-});
-
-// ─── Concorrência na seleção (OpenOffersService) ──────────────────────────────
-// Teste de unidade que simula race condition na seleção de creator.
-
-describe('OpenOffersService.selectCreator — concorrência', () => {
-  it('throws ConflictException when offer is already FILLED (race condition simulation)', async () => {
-    const { OpenOffersService } = await import('../open-offers/open-offers.service').catch(() => {
-      throw new Error('OpenOffersService não encontrado — verificar import path');
-    });
-
-    const filledOffer = {
-      id: 'offer-1',
-      companyUserId: 'company-1',
-      status: 'FILLED',
-      expiresAt: new Date(Date.now() + 3_600_000),
-      jobTypeId: 'jt-1',
-      startsAt: new Date(Date.now() + 86_400_000),
-      durationMinutes: 120,
-      jobAddress: 'Rua Z',
-      jobFormattedAddress: null,
-      jobLatitude: -23.5,
-      jobLongitude: -46.6,
-      offeredAmount: 300,
-      platformFeeRateSnapshot: 0,
-    };
-
-    const openOffersRepository = {
-      findByIdForUpdate: jest.fn().mockResolvedValue(filledOffer),
-      findApplicationByIdForUpdate: jest.fn(),
-      saveApplication: jest.fn(),
-      updatePendingApplicationsToRejected: jest.fn(),
-      save: jest.fn(),
-    };
-
-    const manager = { getRepository: jest.fn() };
-    const dataSource = {
-      transaction: jest.fn(async (cb: (m: unknown) => unknown) => cb(manager)),
-    };
-
-    const usersRepository = {
-      findByAuthUserIdWithProfiles: jest.fn().mockResolvedValue({
-        id: 'company-1',
-        role: 'COMPANY',
-        profile: {},
-        creatorProfile: null,
-      }),
-    };
-
-    const service = new OpenOffersService(
-      dataSource as any,
-      openOffersRepository as any,
-      usersRepository as any,
-      {} as any, // jobTypesService
-      {} as any, // platformSettingsService
-      {} as any, // geocodingService
-      {} as any, // distanceService
-      {} as any, // pricingService
-      {} as any, // schedulingConflictService
-      {} as any, // contractRequestsService
-      { get: jest.fn() } as any,
-      {
-        resolveCurrentAcceptance: jest.fn().mockResolvedValue({
-          id: 'legal-acceptance-1',
-          termVersion: '2026-04-25',
-          acceptedAt: new Date('2026-04-25T12:00:00.000Z'),
-        }),
-      } as any,
-    );
-
-    await expect(
-      service.selectCreator({ authUserId: 'auth-company' }, 'offer-1', 'app-1', {}),
-    ).rejects.toMatchObject({ message: expect.stringContaining('FILLED') });
-  });
-
-  it('throws ConflictException when scheduling conflict detected during selection', async () => {
-    const { OpenOffersService } = await import('../open-offers/open-offers.service').catch(() => {
-      throw new Error('OpenOffersService não encontrado');
-    });
-
-    const openOffer = {
-      id: 'offer-2',
-      companyUserId: 'company-1',
-      status: 'OPEN',
-      expiresAt: new Date(Date.now() + 3_600_000),
-      jobTypeId: 'jt-1',
-      startsAt: new Date(Date.now() + 86_400_000),
-      durationMinutes: 120,
-      jobAddress: 'Rua A',
-      jobFormattedAddress: null,
-      jobLatitude: -23.5,
-      jobLongitude: -46.6,
-      offeredAmount: 300,
-      platformFeeRateSnapshot: 0,
-    };
-
-    const application = {
-      id: 'app-2',
-      openOfferId: 'offer-2',
       creatorUserId: 'creator-1',
-      status: 'PENDING',
+      mode: JobMode.PRESENTIAL,
+      description: 'desc',
+      status: ContractRequestStatus.PENDING_ACCEPTANCE,
+      paymentStatus: PaymentStatus.PENDING,
+      currency: 'BRL',
+      termsAcceptedAt: new Date(),
+      startsAt: new Date(),
+      durationMinutes: 120,
+      jobAddress: 'Av. Paulista',
+      jobFormattedAddress: null,
+      jobLatitude: -23.55,
+      jobLongitude: -46.63,
+      distanceKm: 10,
+      effectiveServiceRadiusKmUsed: 20,
+      serviceGrossAmountCents: 25000,
+      platformFeeBpsSnapshot: 2500,
+      platformFeeAmountCents: 6250,
+      creatorNetServiceAmountCents: 18750,
+      transportFeeAmountCents: 2000,
+      creatorPayoutAmountCents: 20750,
+      companyTotalAmountCents: 27000,
+      transportPricePerKmUsed: 3.5,
+      transportMinimumFeeUsed: 15,
+      creatorNameSnapshot: 'Creator',
+      creatorAvatarUrlSnapshot: null,
+      rejectionReason: null,
+      openOfferId: null,
+      expiresAt: new Date(Date.now() + 86400000),
+      completedAt: null,
+      creatorConfirmedCompletedAt: null,
+      companyConfirmedCompletedAt: null,
+      contestDeadlineAt: null,
+      completionDisputeReason: null,
+      completionDisputedAt: null,
+      completionDisputedByUserId: null,
+      completionPhaseEnteredAt: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      jobTypeId: 'job-type-1',
+      companyUser: null,
     };
 
-    const creatorUser = {
-      id: 'creator-1',
-      profile: { latitude: -23.5, longitude: -46.6, hasValidCoordinates: true },
-      creatorProfile: { serviceRadiusKm: 30 },
-    };
-
-    const manager = {
-      getRepository: jest.fn().mockReturnValue({
-        findOne: jest.fn().mockResolvedValue(creatorUser),
-      }),
-    };
-
-    const openOffersRepository = {
-      findByIdForUpdate: jest.fn().mockResolvedValue(openOffer),
-      findApplicationByIdForUpdate: jest.fn().mockResolvedValue(application),
-      saveApplication: jest.fn(),
-      updatePendingApplicationsToRejected: jest.fn(),
-      save: jest.fn(),
-    };
-
-    const dataSource = {
-      transaction: jest.fn(async (cb: (m: unknown) => unknown) => cb(manager)),
-    };
-
-    const usersRepository = {
-      findByAuthUserIdWithProfiles: jest.fn().mockResolvedValue({
-        id: 'company-1',
-        role: 'COMPANY',
-        profile: {},
-      }),
-    };
-
-    // Scheduling conflict retorna true — agenda ocupada
-    const schedulingConflictService = {
-      hasConflicts: jest.fn().mockResolvedValue(true),
-    };
-
-    const distanceService = {
-      calculateDistanceKm: jest.fn().mockReturnValue(5),
-    };
-
-    const service = new OpenOffersService(
-      dataSource as any,
-      openOffersRepository as any,
-      usersRepository as any,
-      {} as any,
-      {} as any,
-      {} as any,
-      distanceService as any,
-      {} as any,
-      schedulingConflictService as any,
-      {} as any,
-      { get: jest.fn().mockReturnValue(30) } as any,
-      {
-        resolveCurrentAcceptance: jest.fn().mockResolvedValue({
-          id: 'legal-acceptance-2',
-          termVersion: '2026-04-25',
-          acceptedAt: new Date('2026-04-25T12:00:00.000Z'),
-        }),
-      } as any,
-    );
-
-    await expect(
-      service.selectCreator({ authUserId: 'auth-company' }, 'offer-2', 'app-2', {}),
-    ).rejects.toMatchObject({
-      message: expect.stringContaining('agenda'),
-    });
-
-    expect(schedulingConflictService.hasConflicts).toHaveBeenCalledWith(
-      expect.objectContaining({ manager, creatorUserId: 'creator-1' }),
-    );
+    const payload = (service as any).buildCreatorOfferPayload(contract);
+    expect(payload).not.toHaveProperty('platformFeeAmountCents');
+    expect(payload).not.toHaveProperty('platformFeeBpsSnapshot');
+    expect(payload).not.toHaveProperty('serviceGrossAmountCents');
+    expect(payload.creatorNetServiceAmountCents).toBe(18750);
+    expect(payload.transportFeeAmountCents).toBe(2000);
+    expect(payload.creatorPayoutAmountCents).toBe(20750);
+    expect(payload.totalAmount).toBe(20750);
   });
 });

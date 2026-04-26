@@ -14,6 +14,7 @@ import { ContractRequestsService } from './contract-requests.service';
 import { DistanceService } from './services/distance.service';
 import { PricingService } from './services/pricing.service';
 import { TransportService } from './services/transport.service';
+import { FinancialSnapshotService } from './services/financial-snapshot.service';
 
 @Module({
   imports: [
@@ -29,7 +30,7 @@ import { TransportService } from './services/transport.service';
     LegalModule,
   ],
   controllers: [ContractRequestsController],
-  providers: [ContractRequestsService, DistanceService, TransportService, PricingService],
+  providers: [ContractRequestsService, DistanceService, TransportService, PricingService, FinancialSnapshotService],
   exports: [ContractRequestsService],
 })
 export class ContractRequestsModule {}

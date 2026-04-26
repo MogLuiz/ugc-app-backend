@@ -248,7 +248,7 @@ export class CreatorOffersService {
       jobTypeName: contract.jobType?.name ?? '',
       title: contract.jobType?.name ?? 'Campanha',
 
-      totalAmount: contract.totalPrice ?? null,
+      totalAmount: contract.creatorPayoutAmountCents ?? null,
       currency: contract.currency ?? 'BRL',
 
       startsAt: contract.startsAt?.toISOString() ?? null,
@@ -300,7 +300,7 @@ export class CreatorOffersService {
       jobTypeName: offer?.jobType?.name ?? '',
       title: offer?.jobType?.name ?? 'Oportunidade',
 
-      totalAmount: offer?.offeredAmount ?? null,
+      totalAmount: offer?.creatorNetServiceAmountCents ?? null,
       currency: 'BRL',
 
       startsAt: offer?.startsAt?.toISOString() ?? null,

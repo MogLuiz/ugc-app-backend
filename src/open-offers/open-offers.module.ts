@@ -16,6 +16,7 @@ import { OpenOfferApplication } from './entities/open-offer-application.entity';
 import { DistanceService } from '../contract-requests/services/distance.service';
 import { PricingService } from '../contract-requests/services/pricing.service';
 import { TransportService } from '../contract-requests/services/transport.service';
+import { FinancialSnapshotService } from '../contract-requests/services/financial-snapshot.service';
 
 @Module({
   imports: [
@@ -38,6 +39,7 @@ import { TransportService } from '../contract-requests/services/transport.servic
     DistanceService,
     PricingService,
     TransportService,
+    FinancialSnapshotService,
   ],
 })
 export class OpenOffersModule {}

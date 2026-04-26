@@ -268,7 +268,7 @@ export class ReferralsService {
         return;
       }
 
-      const grossAmountCents = Math.floor(event.creatorBasePrice * 100);
+      const grossAmountCents = event.serviceGrossAmountCents;
       const commissionAmountCents = Math.floor(
         grossAmountCents * partnerProfile.commissionRatePercent / 100,
       );

@@ -34,6 +34,9 @@ export class PlatformSetting {
   })
   transportMinimumFee: number;
 
+  @Column({ name: 'platform_fee_bps', type: 'int', default: 2500 })
+  platformFeeBps: number;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

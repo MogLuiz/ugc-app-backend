@@ -33,16 +33,6 @@ export class JobType {
   isActive: boolean;
 
   @Column({
-    name: 'platform_fee_rate',
-    type: 'decimal',
-    precision: 5,
-    scale: 4,
-    default: 0,
-    transformer: { to: (v: number) => v, from: (v: string) => parseFloat(v) },
-  })
-  platformFeeRate: number;
-
-  @Column({
     name: 'minimum_offered_amount',
     type: 'decimal',
     precision: 10,

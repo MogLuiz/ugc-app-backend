@@ -4,6 +4,7 @@ import { PlatformSettingsRepository } from './platform-settings.repository';
 export type PlatformSettingsSnapshot = {
   transportPricePerKm: number;
   transportMinimumFee: number;
+  platformFeeBps: number;
 };
 
 @Injectable()
@@ -22,6 +23,7 @@ export class PlatformSettingsService {
     return {
       transportPricePerKm: settings.transportPricePerKm,
       transportMinimumFee: settings.transportMinimumFee,
+      platformFeeBps: settings.platformFeeBps,
     };
   }
 
