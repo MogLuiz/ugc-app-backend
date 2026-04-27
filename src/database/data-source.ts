@@ -42,6 +42,7 @@ import { PlatformFeeBps1767001300000 } from './migrations/1767001300000-Platform
 import { OfferAndContractFinancials1767001400000 } from './migrations/1767001400000-OfferAndContractFinancials';
 import { PaymentFinancials1767001500000 } from './migrations/1767001500000-PaymentFinancials';
 import { AddNotificationsBase1767001600000 } from './migrations/1767001600000-AddNotificationsBase';
+import { DropStalePaymentsAmountsConstraint1767001700000 } from './migrations/1767001700000-DropStalePaymentsAmountsConstraint';
 
 config();
 
@@ -101,6 +102,7 @@ export const AppDataSource = new DataSource(
         OfferAndContractFinancials1767001400000,
         PaymentFinancials1767001500000,
         AddNotificationsBase1767001600000,
+        DropStalePaymentsAmountsConstraint1767001700000,
       ],
       synchronize: false,
       logging: process.env.NODE_ENV === 'development',
@@ -158,6 +160,7 @@ export const AppDataSource = new DataSource(
         OfferAndContractFinancials1767001400000,
         PaymentFinancials1767001500000,
         AddNotificationsBase1767001600000,
+        DropStalePaymentsAmountsConstraint1767001700000,
       ],
       synchronize: false,
       logging: process.env.NODE_ENV === 'development',

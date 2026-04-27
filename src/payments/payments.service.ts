@@ -49,6 +49,8 @@ export class PaymentsService {
     private readonly paymentRepo: Repository<Payment>,
     @InjectRepository(ContractRequest)
     private readonly contractRequestRepo: Repository<ContractRequest>,
+    @InjectRepository(CreatorPayout)
+    private readonly payoutRepo: Repository<CreatorPayout>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
     @Inject(PAYMENT_PROVIDER)
@@ -83,6 +85,12 @@ export class PaymentsService {
       );
     }
 
+    if (contract.expiresAt && contract.expiresAt <= new Date()) {
+      throw new BadRequestException(
+        'Este convite expirou e não pode mais ser pago. Um novo convite precisa ser enviado.',
+      );
+    }
+
     // 3. Verifica se já existe pagamento ativo
     const existing = await this.paymentRepo.findOne({
       where: { contractRequestId: contract.id },
@@ -94,7 +102,10 @@ export class PaymentsService {
       // Se a preferência ainda não foi criada (falha anterior), tenta novamente
       if (!existing.externalPreferenceId && existing.creditAppliedCents < existing.companyTotalAmountCents) {
         const remainderCents = existing.companyTotalAmountCents - existing.creditAppliedCents;
-        const frontendBase = this.configService.get<string>('FRONTEND_BASE_URL') ?? '';
+        const frontendBase =
+          this.configService.get<string>('FRONTEND_BASE_URL') ||
+          this.configService.get<string>('FRONTEND_URL') ||
+          '';
         const intent = await this.provider.createPaymentIntent({
           paymentId: existing.id,
           amountCents: remainderCents,
@@ -224,7 +235,10 @@ export class PaymentsService {
     const savedPayment = await this.paymentRepo.save(payment);
 
     // 8. Cria intenção de pagamento no gateway pelo valor restante
-    const frontendBase = this.configService.get<string>('FRONTEND_BASE_URL') ?? '';
+    const frontendBase =
+      this.configService.get<string>('FRONTEND_BASE_URL') ||
+      this.configService.get<string>('FRONTEND_URL') ||
+      '';
     const intent = await this.provider.createPaymentIntent({
       paymentId: savedPayment.id,
       amountCents: remainderCents,
@@ -283,12 +297,94 @@ export class PaymentsService {
     payment.paymentMethod = result.paymentMethod;
     payment.installments = result.installments;
     payment.status = result.status;
-    if (result.status === PaymentStatus.PAID && result.paidAt) {
-      payment.paidAt = result.paidAt;
-      payment.payoutStatus = PayoutStatus.PENDING;
-    }
 
-    await this.paymentRepo.save(payment);
+    if (result.status === PaymentStatus.PAID) {
+      payment.paidAt = result.paidAt ?? new Date();
+      payment.payoutStatus = PayoutStatus.PENDING;
+
+      let visibleEvent: ContractVisibleToCreatorEvent | null = null;
+      let payoutEvent: CreatorPayoutUpdatedEvent | null = null;
+
+      await this.dataSource.transaction(async (manager) => {
+        await manager.save(Payment, payment);
+
+        const existingPayout = await manager.findOne(CreatorPayout, {
+          where: { paymentId: payment.id },
+        });
+        if (!existingPayout) {
+          const payout = manager.create(CreatorPayout, {
+            paymentId: payment.id,
+            creatorUserId: payment.creatorUserId,
+            amountCents: payment.creatorPayoutAmountCents,
+            currency: payment.currency,
+            status: PayoutStatus.PENDING,
+          });
+          const savedPayout = await manager.save(CreatorPayout, payout);
+          payoutEvent = {
+            payoutId: savedPayout.id,
+            creatorUserId: savedPayout.creatorUserId,
+            paymentId: payment.id,
+            contractRequestId: payment.contractRequestId,
+            status: savedPayout.status,
+            occurredAt: new Date(),
+          };
+          this.logger.log(
+            `CreatorPayout criado (sync): id=${savedPayout.id} creatorUserId=${savedPayout.creatorUserId} amount=${savedPayout.amountCents}`,
+          );
+        }
+
+        const contract = await manager.findOne(ContractRequest, {
+          where: { id: payment.contractRequestId },
+        });
+        if (contract?.status === ContractRequestStatus.PENDING_PAYMENT) {
+          await manager.update(ContractRequest, { id: contract.id }, {
+            status: ContractRequestStatus.PENDING_ACCEPTANCE,
+            paymentStatus: ContractPaymentStatus.PAID,
+          });
+          visibleEvent = {
+            contractRequestId: contract.id,
+            creatorUserId: contract.creatorUserId,
+            reason: contract.openOfferId ? 'open_offer_selected' : 'direct_invite_received',
+            paymentId: payment.id,
+            occurredAt: new Date(),
+          };
+          this.logger.log(
+            `Contrato ${contract.id} transitado (sync): PENDING_PAYMENT → PENDING_ACCEPTANCE`,
+          );
+        } else if (contract) {
+          await manager.update(ContractRequest, { id: contract.id }, {
+            paymentStatus: ContractPaymentStatus.PAID,
+          });
+          if (contract.openOfferId) {
+            visibleEvent = {
+              contractRequestId: contract.id,
+              creatorUserId: contract.creatorUserId,
+              reason: 'open_offer_selected',
+              paymentId: payment.id,
+              occurredAt: new Date(),
+            };
+          }
+        }
+
+        if (payment.creditAppliedCents > 0) {
+          const alreadyDebited = await this.companyBalanceService.isCreditAlreadyDebited(
+            payment.id,
+          );
+          if (!alreadyDebited) {
+            await this.companyBalanceService.useCredit(
+              payment.companyUserId,
+              payment.creditAppliedCents,
+              payment.id,
+              manager,
+            );
+          }
+        }
+      });
+
+      this.emitPostPaymentEvents(visibleEvent, payoutEvent);
+    } else {
+      await this.paymentRepo.save(payment);
+    }
 
     this.logger.log(
       `Pagamento processado: paymentId=${payment.id} status=${result.status} mpId=${result.externalPaymentId}`,

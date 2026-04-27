@@ -184,8 +184,8 @@ export class EnvValidation {
   @IsOptional()
   FRONTEND_BASE_URL: string = 'http://localhost:5173';
 
-  @IsOptional()
-  FRONTEND_URL: string = 'http://localhost:5173';
+  @IsString()
+  FRONTEND_URL!: string;
 
   // Admin interno
   @IsOptional()
@@ -299,6 +299,7 @@ const REQUIRED_ENV_VARS = [
   'MP_WEBHOOK_SECRET',
   'API_BASE_URL',
   'APP_URL',
+  'FRONTEND_URL',
 ] as const;
 
 const URI_ENV_VARS = [
