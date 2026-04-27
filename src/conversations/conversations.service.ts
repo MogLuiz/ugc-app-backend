@@ -4,6 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { DataSource, EntityManager, QueryFailedError, Repository } from 'typeorm';
 import { AuthUser } from '../common/interfaces/auth-user.interface';
 import { ContractRequestStatus } from '../common/enums/contract-request-status.enum';
@@ -20,6 +21,10 @@ import { SendMessageDto } from './dto/send-message.dto';
 import { ConversationParticipantRole } from './enums/conversation-participant-role.enum';
 import { Conversation } from './entities/conversation.entity';
 import { ConversationsRepository } from './conversations.repository';
+import {
+  MESSAGE_SENT_EVENT,
+  MessageSentEvent,
+} from './events/message-sent.event';
 
 const ACCESSIBLE_CHAT_STATUSES: ReadonlyArray<ContractRequestStatus> = [
   ContractRequestStatus.ACCEPTED,
@@ -42,6 +47,7 @@ export class ConversationsService {
     private readonly dataSource: DataSource,
     private readonly usersRepository: UsersRepository,
     private readonly conversationsRepository: ConversationsRepository,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
   async listMyConversations(user: AuthUser, query: ListConversationsDto) {
@@ -189,7 +195,7 @@ export class ConversationsService {
       throw new BadRequestException('A mensagem deve ter no máximo 2000 caracteres');
     }
 
-    return this.dataSource.transaction(async (manager) => {
+    const { payload, event } = await this.dataSource.transaction(async (manager) => {
       const context = await this.getAccessContextOrThrow(actor.id, conversationId, manager);
       this.ensureStatusAllowsSend(context.contractRequest.status);
 
@@ -216,15 +222,45 @@ export class ConversationsService {
         manager,
       );
 
+      const recipientUserId =
+        actor.id === context.contractRequest.companyUserId
+          ? context.contractRequest.creatorUserId
+          : context.contractRequest.companyUserId;
+      const recipientRole =
+        recipientUserId === context.contractRequest.creatorUserId
+          ? ConversationParticipantRole.CREATOR
+          : ConversationParticipantRole.COMPANY;
+
       return {
-        id: message.id,
-        conversationId: message.conversationId,
-        senderUserId: message.senderUserId,
-        content: message.content,
-        contentType: message.contentType,
-        createdAt: message.createdAt.toISOString(),
+        payload: {
+          id: message.id,
+          conversationId: message.conversationId,
+          senderUserId: message.senderUserId,
+          content: message.content,
+          contentType: message.contentType,
+          createdAt: message.createdAt.toISOString(),
+        },
+        event: {
+          messageId: message.id,
+          conversationId: message.conversationId,
+          contractRequestId: context.contractRequest.id,
+          senderUserId: actor.id,
+          senderName:
+            actor.companyProfile?.companyName ??
+            actor.profile?.name ??
+            'Usuário',
+          recipientUserId,
+          recipientRole,
+          createdAt: message.createdAt,
+        } satisfies MessageSentEvent,
       };
     });
+
+    if (event.recipientRole === ConversationParticipantRole.CREATOR) {
+      this.eventEmitter.emit(MESSAGE_SENT_EVENT, event);
+    }
+
+    return payload;
   }
 
   async canUserAccessConversation(userId: string, conversationId: string): Promise<boolean> {

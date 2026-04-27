@@ -1,4 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { ContractRequest } from '../../contract-requests/entities/contract-request.entity';
@@ -14,6 +15,14 @@ import {
   IPaymentProvider,
 } from '../providers/payment-provider.interface';
 import { CompanyBalanceService } from '../../billing/company-balance.service';
+import {
+  CONTRACT_VISIBLE_TO_CREATOR_EVENT,
+  ContractVisibleToCreatorEvent,
+} from '../../contract-requests/events/contract-visible-to-creator.event';
+import {
+  CREATOR_PAYOUT_UPDATED_EVENT,
+  CreatorPayoutUpdatedEvent,
+} from '../events/creator-payout-updated.event';
 
 function isUniqueViolation(err: unknown): boolean {
   return (
@@ -41,6 +50,7 @@ export class WebhooksService {
     private readonly provider: IPaymentProvider,
     private readonly dataSource: DataSource,
     private readonly companyBalanceService: CompanyBalanceService,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
   /**
@@ -156,6 +166,9 @@ export class WebhooksService {
       return;
     }
 
+    let visibleEvent: ContractVisibleToCreatorEvent | null = null;
+    let payoutEvent: CreatorPayoutUpdatedEvent | null = null;
+
     await this.dataSource.transaction(async (manager) => {
       // 3. Atualiza Payment
       payment.status = normalized.status;
@@ -176,6 +189,14 @@ export class WebhooksService {
           status: PayoutStatus.PENDING,
         });
         await manager.save(CreatorPayout, payout);
+        payoutEvent = {
+          payoutId: payout.id,
+          creatorUserId: payout.creatorUserId,
+          paymentId: payment.id,
+          contractRequestId: payment.contractRequestId,
+          status: payout.status,
+          occurredAt: new Date(),
+        };
         this.logger.log(
           `CreatorPayout criado: id=${payout.id} creatorUserId=${payout.creatorUserId} amount=${payout.amountCents}`,
         );
@@ -189,6 +210,13 @@ export class WebhooksService {
             status: ContractRequestStatus.PENDING_ACCEPTANCE,
             paymentStatus: ContractPaymentStatus.PAID,
           });
+          visibleEvent = {
+            contractRequestId: contract.id,
+            creatorUserId: contract.creatorUserId,
+            reason: 'direct_invite_received',
+            paymentId: payment.id,
+            occurredAt: new Date(),
+          };
           this.logger.log(
             `Contrato ${contract.id} transitado: PENDING_PAYMENT → PENDING_ACCEPTANCE`,
           );
@@ -199,6 +227,15 @@ export class WebhooksService {
             { id: payment.contractRequestId },
             { paymentStatus: ContractPaymentStatus.PAID },
           );
+          if (contract?.openOfferId) {
+            visibleEvent = {
+              contractRequestId: contract.id,
+              creatorUserId: contract.creatorUserId,
+              reason: 'open_offer_selected',
+              paymentId: payment.id,
+              occurredAt: new Date(),
+            };
+          }
         }
 
         // 6. Débito de crédito parcial (com idempotência via CompanyBalanceTransaction)
@@ -224,6 +261,13 @@ export class WebhooksService {
 
       await manager.save(Payment, payment);
     });
+
+    if (visibleEvent) {
+      this.eventEmitter.emit(CONTRACT_VISIBLE_TO_CREATOR_EVENT, visibleEvent);
+    }
+    if (payoutEvent) {
+      this.eventEmitter.emit(CREATOR_PAYOUT_UPDATED_EVENT, payoutEvent);
+    }
   }
 
   /**

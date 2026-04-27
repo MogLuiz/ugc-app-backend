@@ -41,6 +41,7 @@ import { AddHiringTermsSnapshotToContractRequests1767001200000 } from './migrati
 import { PlatformFeeBps1767001300000 } from './migrations/1767001300000-PlatformFeeBps';
 import { OfferAndContractFinancials1767001400000 } from './migrations/1767001400000-OfferAndContractFinancials';
 import { PaymentFinancials1767001500000 } from './migrations/1767001500000-PaymentFinancials';
+import { AddNotificationsBase1767001600000 } from './migrations/1767001600000-AddNotificationsBase';
 
 config();
 
@@ -99,6 +100,7 @@ export const AppDataSource = new DataSource(
         PlatformFeeBps1767001300000,
         OfferAndContractFinancials1767001400000,
         PaymentFinancials1767001500000,
+        AddNotificationsBase1767001600000,
       ],
       synchronize: false,
       logging: process.env.NODE_ENV === 'development',
@@ -155,6 +157,7 @@ export const AppDataSource = new DataSource(
         PlatformFeeBps1767001300000,
         OfferAndContractFinancials1767001400000,
         PaymentFinancials1767001500000,
+        AddNotificationsBase1767001600000,
       ],
       synchronize: false,
       logging: process.env.NODE_ENV === 'development',

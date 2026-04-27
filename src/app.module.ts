@@ -25,6 +25,7 @@ import { BillingModule } from './billing/billing.module';
 import { ReviewsModule } from './reviews/reviews.module';
 import { CompanyModule } from './company/company.module';
 import { LegalModule } from './legal/legal.module';
+import { NotificationsModule } from './notifications/notifications.module';
 
 @Module({
   imports: [
@@ -50,6 +51,7 @@ import { LegalModule } from './legal/legal.module';
     ReviewsModule,
     CompanyModule,
     LegalModule,
+    NotificationsModule,
     UploadsModule,
     HealthModule,
   ],

@@ -7,6 +7,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { ContractRequest } from '../contract-requests/entities/contract-request.entity';
@@ -30,6 +31,14 @@ import {
 } from './dto/payment-response.dto';
 import { CompanyBalanceService } from '../billing/company-balance.service';
 import { CreatorPayout } from './entities/creator-payout.entity';
+import {
+  CONTRACT_VISIBLE_TO_CREATOR_EVENT,
+  ContractVisibleToCreatorEvent,
+} from '../contract-requests/events/contract-visible-to-creator.event';
+import {
+  CREATOR_PAYOUT_UPDATED_EVENT,
+  CreatorPayoutUpdatedEvent,
+} from './events/creator-payout-updated.event';
 
 @Injectable()
 export class PaymentsService {
@@ -42,13 +51,12 @@ export class PaymentsService {
     private readonly contractRequestRepo: Repository<ContractRequest>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
-    @InjectRepository(CreatorPayout)
-    private readonly payoutRepo: Repository<CreatorPayout>,
     @Inject(PAYMENT_PROVIDER)
     private readonly provider: IPaymentProvider,
     private readonly configService: ConfigService,
     private readonly companyBalanceService: CompanyBalanceService,
     private readonly dataSource: DataSource,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
   async initiatePayment(
@@ -136,44 +144,72 @@ export class PaymentsService {
 
     // 6. Caso 100% coberto por crédito — confirmar diretamente sem MP
     if (remainderCents === 0 && creditToApply > 0) {
-      return this.dataSource.transaction(async (manager) => {
-        const payment = manager.getRepository(Payment).create({
-          ...paymentBase,
-          status: PaymentStatus.PAID,
-          payoutStatus: PayoutStatus.PENDING,
-          settlementStatus: SettlementStatus.HELD,
-          creditAppliedCents: creditToApply,
-          gatewayName: 'credit',
-          paidAt: new Date(),
-        });
-        const savedPayment = await manager.save(Payment, payment);
-
-        // Debitar crédito imediatamente (único fluxo sem webhook)
-        await this.companyBalanceService.useCredit(user.id, creditToApply, savedPayment.id, manager);
-
-        // Criar CreatorPayout
-        const payout = manager.getRepository(CreatorPayout).create({
-          paymentId: savedPayment.id,
-          creatorUserId: contract.creatorUserId,
-          amountCents: creatorPayoutAmountCents,
-          currency: contract.currency,
-          status: PayoutStatus.PENDING,
-        });
-        await manager.save(CreatorPayout, payout);
-
-        // Transicionar contrato se PENDING_PAYMENT → PENDING_ACCEPTANCE
-        if (contract.status === ContractRequestStatus.PENDING_PAYMENT) {
-          await manager.update(ContractRequest, { id: contract.id }, {
-            status: ContractRequestStatus.PENDING_ACCEPTANCE,
-            paymentStatus: ContractPaymentStatus.PAID,
+      const { response, visibleEvent, payoutEvent } = await this.dataSource.transaction(
+        async (manager) => {
+          const payment = manager.getRepository(Payment).create({
+            ...paymentBase,
+            status: PaymentStatus.PAID,
+            payoutStatus: PayoutStatus.PENDING,
+            settlementStatus: SettlementStatus.HELD,
+            creditAppliedCents: creditToApply,
+            gatewayName: 'credit',
+            paidAt: new Date(),
           });
-        }
+          const savedPayment = await manager.save(Payment, payment);
 
-        this.logger.log(
-          `Pagamento 100% crédito: paymentId=${savedPayment.id} credit=${creditToApply}`,
-        );
-        return this.buildInitiateResponse(savedPayment);
-      });
+          // Debitar crédito imediatamente (único fluxo sem webhook)
+          await this.companyBalanceService.useCredit(
+            user.id,
+            creditToApply,
+            savedPayment.id,
+            manager,
+          );
+
+          // Criar CreatorPayout
+          const payout = manager.getRepository(CreatorPayout).create({
+            paymentId: savedPayment.id,
+            creatorUserId: contract.creatorUserId,
+            amountCents: creatorPayoutAmountCents,
+            currency: contract.currency,
+            status: PayoutStatus.PENDING,
+          });
+          const savedPayout = await manager.save(CreatorPayout, payout);
+
+          // Transicionar contrato se PENDING_PAYMENT → PENDING_ACCEPTANCE
+          if (contract.status === ContractRequestStatus.PENDING_PAYMENT) {
+            await manager.update(
+              ContractRequest,
+              { id: contract.id },
+              {
+                status: ContractRequestStatus.PENDING_ACCEPTANCE,
+                paymentStatus: ContractPaymentStatus.PAID,
+              },
+            );
+          }
+
+          this.logger.log(
+            `Pagamento 100% crédito: paymentId=${savedPayment.id} credit=${creditToApply}`,
+          );
+          return {
+            response: this.buildInitiateResponse(savedPayment),
+            visibleEvent: this.buildContractVisibleToCreatorEvent(
+              contract,
+              savedPayment.id,
+            ),
+            payoutEvent: {
+              payoutId: savedPayout.id,
+              creatorUserId: savedPayout.creatorUserId,
+              paymentId: savedPayment.id,
+              contractRequestId: contract.id,
+              status: savedPayout.status,
+              occurredAt: new Date(),
+            } satisfies CreatorPayoutUpdatedEvent,
+          };
+        },
+      );
+
+      this.emitPostPaymentEvents(visibleEvent, payoutEvent);
+      return response;
     }
 
     // 7. Cria Payment (com crédito parcial ou sem crédito)
@@ -332,5 +368,32 @@ export class PaymentsService {
       createdAt: payment.createdAt,
       updatedAt: payment.updatedAt,
     };
+  }
+
+  private buildContractVisibleToCreatorEvent(
+    contract: ContractRequest,
+    paymentId: string,
+  ): ContractVisibleToCreatorEvent {
+    return {
+      contractRequestId: contract.id,
+      creatorUserId: contract.creatorUserId,
+      reason: contract.openOfferId
+        ? 'open_offer_selected'
+        : 'direct_invite_received',
+      paymentId,
+      occurredAt: new Date(),
+    };
+  }
+
+  private emitPostPaymentEvents(
+    visibleEvent: ContractVisibleToCreatorEvent | null,
+    payoutEvent: CreatorPayoutUpdatedEvent | null,
+  ): void {
+    if (visibleEvent) {
+      this.eventEmitter.emit(CONTRACT_VISIBLE_TO_CREATOR_EVENT, visibleEvent);
+    }
+    if (payoutEvent) {
+      this.eventEmitter.emit(CREATOR_PAYOUT_UPDATED_EVENT, payoutEvent);
+    }
   }
 }

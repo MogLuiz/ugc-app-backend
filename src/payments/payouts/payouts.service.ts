@@ -4,6 +4,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AuthUser } from '../../common/interfaces/auth-user.interface';
@@ -11,6 +12,10 @@ import { User } from '../../users/entities/user.entity';
 import { CreatorPayout } from '../entities/creator-payout.entity';
 import { Payment } from '../entities/payment.entity';
 import { PayoutStatus } from '../enums/payout-status.enum';
+import {
+  CREATOR_PAYOUT_UPDATED_EVENT,
+  CreatorPayoutUpdatedEvent,
+} from '../events/creator-payout-updated.event';
 
 export class MarkPaidDto {
   /** Identificador do admin que está executando o repasse. */
@@ -54,6 +59,7 @@ export class PayoutsService {
     private readonly paymentRepo: Repository<Payment>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
   /**
@@ -110,6 +116,15 @@ export class PayoutsService {
     this.logger.log(
       `Repasse marcado como pago: id=${saved.id} creatorUserId=${saved.creatorUserId} amount=${saved.amountCents} markedBy=${dto.markedPaidBy}`,
     );
+
+    this.eventEmitter.emit(CREATOR_PAYOUT_UPDATED_EVENT, {
+      payoutId: saved.id,
+      creatorUserId: saved.creatorUserId,
+      paymentId: saved.paymentId,
+      contractRequestId: payout.payment?.contractRequestId ?? '',
+      status: saved.status,
+      occurredAt: new Date(),
+    } satisfies CreatorPayoutUpdatedEvent);
 
     return this.toDto(saved);
   }

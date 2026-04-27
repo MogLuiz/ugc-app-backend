@@ -9,6 +9,10 @@ import {
   CONTRACT_REQUEST_COMPLETED_EVENT,
   ContractRequestCompletedEvent,
 } from '../contract-requests/events/contract-request-completed.event';
+import {
+  CONTRACT_AWAITING_COMPLETION_CONFIRMATION_EVENT,
+  ContractAwaitingCompletionConfirmationEvent,
+} from '../contract-requests/events/contract-awaiting-completion-confirmation.event';
 
 const COMPLETION_DEADLINE_HOURS = 72;
 
@@ -50,7 +54,7 @@ export class JobCompletionService {
 
     const overdue = await this.contractRequestRepo
       .createQueryBuilder('cr')
-      .select(['cr.id'])
+      .select(['cr.id', 'cr.creatorUserId'])
       .where('cr.status = :status', { status: ContractRequestStatus.ACCEPTED })
       .andWhere(
         `cr.starts_at + (cr.duration_minutes || ' minutes')::interval < :now`,
@@ -79,6 +83,14 @@ export class JobCompletionService {
 
         if (result.affected && result.affected > 0) {
           this.logger.log(`Contrato ${contract.id} → AWAITING_COMPLETION_CONFIRMATION`);
+          this.eventEmitter.emit(
+            CONTRACT_AWAITING_COMPLETION_CONFIRMATION_EVENT,
+            {
+              contractRequestId: contract.id,
+              creatorUserId: contract.creatorUserId,
+              occurredAt: now,
+            } satisfies ContractAwaitingCompletionConfirmationEvent,
+          );
         }
       } catch (err) {
         this.logger.error(
