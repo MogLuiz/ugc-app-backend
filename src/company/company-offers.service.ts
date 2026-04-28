@@ -4,6 +4,8 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { In, Repository } from 'typeorm';
 import { AuthUser } from '../common/interfaces/auth-user.interface';
 import { UserRole } from '../common/enums/user-role.enum';
 import { ContractRequestStatus } from '../common/enums/contract-request-status.enum';
@@ -13,6 +15,7 @@ import { OpenOffersRepository } from '../open-offers/open-offers.repository';
 import { ContractRequestsRepository } from '../contract-requests/contract-requests.repository';
 import { OpenOffer } from '../open-offers/entities/open-offer.entity';
 import { ContractRequest } from '../contract-requests/entities/contract-request.entity';
+import { Payment } from '../payments/entities/payment.entity';
 import { User } from '../users/entities/user.entity';
 
 // ─── Hub types ────────────────────────────────────────────────────────────────
@@ -35,6 +38,7 @@ export type HubPrimaryAction = 'review_applications' | 'view_details';
  * Campos como title, address e os fallbacks ("Campanha", "Local a combinar")
  * são decisões de UI aplicadas no backend para simplificar a renderização.
  * creatorId/Name/AvatarUrl são null para kind='open_offer' (sem creator único).
+ * paymentId/paymentStatus/pixExpiresAt são populados apenas para itens em awaitingPayment.
  */
 export type CompanyHubItem = {
   id: string;
@@ -72,12 +76,20 @@ export type CompanyHubItem = {
   contractRequestId: string | null;
   createdAt: string;
   updatedAt: string | null;
+  /** Presente apenas para itens de awaitingPayment. Null se Payment ainda não foi criado. */
+  paymentId: string | null;
+  /** Status do Payment no domínio de pagamentos (ex: 'pending', 'failed'). Null se sem Payment. */
+  paymentStatus: string | null;
+  /** Expiração do PIX, se o método escolhido foi PIX. Null nos demais casos. */
+  pixExpiresAt: string | null;
 };
 
 export type CompanyOffersHubResponse = {
   pending: {
     openOffers: CompanyHubItem[];
     directInvites: CompanyHubItem[];
+    /** Contratos criados mas ainda não pagos pela empresa. */
+    awaitingPayment: CompanyHubItem[];
   };
   inProgress: CompanyHubItem[];
   finalized: {
@@ -101,6 +113,8 @@ export class CompanyOffersService {
     private readonly usersRepository: UsersRepository,
     private readonly openOffersRepository: OpenOffersRepository,
     private readonly contractRequestsRepository: ContractRequestsRepository,
+    @InjectRepository(Payment)
+    private readonly paymentRepo: Repository<Payment>,
   ) {}
 
   async getOffersHub(authUser: AuthUser): Promise<CompanyOffersHubResponse> {
@@ -119,12 +133,22 @@ export class CompanyOffersService {
       .filter((o) => o.status === OpenOfferStatus.OPEN)
       .map((o) => o.id);
 
-    const pendingCounts =
-      openOfferIds.length > 0
-        ? await this.openOffersRepository.countPendingApplicationsByOfferIds(openOfferIds)
-        : {};
+    const pendingPaymentContractIds = allContracts
+      .filter((c) => c.status === ContractRequestStatus.PENDING_PAYMENT)
+      .map((c) => c.id);
 
-    return this.buildHubResponse(allOffers, allContracts, pendingCounts, now);
+    const [pendingCounts, payments] = await Promise.all([
+      openOfferIds.length > 0
+        ? this.openOffersRepository.countPendingApplicationsByOfferIds(openOfferIds)
+        : Promise.resolve({} as Record<string, number>),
+      pendingPaymentContractIds.length > 0
+        ? this.paymentRepo.findBy({ contractRequestId: In(pendingPaymentContractIds) })
+        : Promise.resolve([] as Payment[]),
+    ]);
+
+    const paymentByContractId = new Map(payments.map((p) => [p.contractRequestId, p]));
+
+    return this.buildHubResponse(allOffers, allContracts, pendingCounts, now, paymentByContractId);
   }
 
   // ─── Private: auth ──────────────────────────────────────────────────────────
@@ -145,10 +169,12 @@ export class CompanyOffersService {
     contracts: ContractRequest[],
     pendingCounts: Record<string, number>,
     now: Date,
+    paymentByContractId: Map<string, Payment>,
   ): CompanyOffersHubResponse {
     const pending: CompanyOffersHubResponse['pending'] = {
       openOffers: [],
       directInvites: [],
+      awaitingPayment: [],
     };
     const inProgress: CompanyHubItem[] = [];
     const finalized: CompanyOffersHubResponse['finalized'] = {
@@ -176,33 +202,50 @@ export class CompanyOffersService {
 
     for (const contract of contracts) {
       const effectiveExpiresAt = this.resolveEffectiveExpiresAt(contract);
+
+      // PENDING_PAYMENT: contratos criados mas ainda não pagos.
+      // Tratados aqui, antes do switch, para separar de PENDING_ACCEPTANCE (directInvites).
+      if (contract.status === ContractRequestStatus.PENDING_PAYMENT) {
+        if (effectiveExpiresAt && effectiveExpiresAt <= now) {
+          finalized.expiredWithoutHire.push(
+            this.mapContractToHubItem(contract, 'EXPIRED', effectiveExpiresAt, now, null),
+          );
+        } else {
+          const payment = paymentByContractId.get(contract.id) ?? null;
+          pending.awaitingPayment.push(
+            this.mapContractToHubItem(contract, 'PENDING', effectiveExpiresAt, now, payment),
+          );
+        }
+        continue;
+      }
+
       const displayStatus = this.buildHubDisplayStatus(contract, effectiveExpiresAt, now);
 
       switch (displayStatus) {
         case 'PENDING':
           if (!contract.openOfferId) {
             pending.directInvites.push(
-              this.mapContractToHubItem(contract, displayStatus, effectiveExpiresAt, now),
+              this.mapContractToHubItem(contract, displayStatus, effectiveExpiresAt, now, null),
             );
           }
           break;
         case 'ACCEPTED':
         case 'IN_PROGRESS':
-          inProgress.push(this.mapContractToHubItem(contract, displayStatus, effectiveExpiresAt, now));
+          inProgress.push(this.mapContractToHubItem(contract, displayStatus, effectiveExpiresAt, now, null));
           break;
         case 'COMPLETED':
           finalized.completed.push(
-            this.mapContractToHubItem(contract, displayStatus, effectiveExpiresAt, now),
+            this.mapContractToHubItem(contract, displayStatus, effectiveExpiresAt, now, null),
           );
           break;
         case 'CANCELLED':
           finalized.cancelled.push(
-            this.mapContractToHubItem(contract, displayStatus, effectiveExpiresAt, now),
+            this.mapContractToHubItem(contract, displayStatus, effectiveExpiresAt, now, null),
           );
           break;
         case 'EXPIRED':
           finalized.expiredWithoutHire.push(
-            this.mapContractToHubItem(contract, displayStatus, effectiveExpiresAt, now),
+            this.mapContractToHubItem(contract, displayStatus, effectiveExpiresAt, now, null),
           );
           break;
       }
@@ -210,6 +253,7 @@ export class CompanyOffersService {
 
     pending.openOffers.sort(this.sortByApplicationsThenExpiry);
     pending.directInvites.sort(this.sortByEffectiveExpiry);
+    pending.awaitingPayment.sort(this.sortByUpdatedAtDesc);
     inProgress.sort(this.sortByStartsAtAsc);
     finalized.completed.sort(this.sortByUpdatedAtDesc);
     finalized.cancelled.sort(this.sortByUpdatedAtDesc);
@@ -312,6 +356,9 @@ export class CompanyOffersService {
       contractRequestId: null,
       createdAt: offer.createdAt.toISOString(),
       updatedAt: offer.updatedAt?.toISOString() ?? null,
+      paymentId: null,
+      paymentStatus: null,
+      pixExpiresAt: null,
     };
   }
 
@@ -320,6 +367,7 @@ export class CompanyOffersService {
     displayStatus: HubDisplayStatus,
     effectiveExpiresAt: Date | null,
     now: Date,
+    payment: Payment | null,
   ): CompanyHubItem {
     const isAwaiting =
       contract.status === ContractRequestStatus.AWAITING_COMPLETION_CONFIRMATION;
@@ -359,6 +407,9 @@ export class CompanyOffersService {
       contractRequestId: contract.id,
       createdAt: contract.createdAt.toISOString(),
       updatedAt: contract.updatedAt?.toISOString() ?? null,
+      paymentId: payment?.id ?? null,
+      paymentStatus: payment?.status ?? null,
+      pixExpiresAt: payment?.pixExpiresAt?.toISOString() ?? null,
     };
   }
 

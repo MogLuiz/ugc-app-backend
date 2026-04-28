@@ -100,7 +100,37 @@ export class PaymentsService {
       if (existing.status === PaymentStatus.PAID) {
         throw new ConflictException('Este contrato já foi pago');
       }
-      // Se a preferência ainda não foi criada (falha anterior), tenta novamente
+
+      // Detecta estados que exigem nova tentativa:
+      //   - FAILED ou CANCELED: tentativa anterior encerrou sem pagamento
+      //   - PROCESSING com PIX expirado: QR venceu, não pode ser reaproveitado
+      // Os campos são zerados apenas em memória — o save atômico abaixo persiste
+      // tudo junto, evitando estado parcialmente zerado se createPaymentIntent() falhar.
+      const isRetryRequired =
+        ([PaymentStatus.FAILED, PaymentStatus.CANCELED] as PaymentStatus[]).includes(existing.status) ||
+        (existing.status === PaymentStatus.PROCESSING &&
+          existing.pixExpiresAt !== null &&
+          existing.pixExpiresAt < new Date());
+
+      if (isRetryRequired) {
+        const previousStatus = existing.status;
+        existing.status = PaymentStatus.PENDING;
+        existing.externalPaymentId = null;
+        existing.externalPreferenceId = null;
+        existing.externalReference = null;
+        existing.pixCopyPaste = null;
+        existing.pixQrCodeBase64 = null;
+        existing.pixExpiresAt = null;
+        this.logger.log(
+          formatStructuredLog('payment.retry_initiated', {
+            paymentId: existing.id,
+            contractRequestId: existing.contractRequestId,
+            previousStatus,
+          }),
+        );
+      }
+
+      // Se a preferência ainda não foi criada (falha anterior ou reset de retry), tenta novamente
       if (!existing.externalPreferenceId && existing.creditAppliedCents < existing.companyTotalAmountCents) {
         const remainderCents = existing.companyTotalAmountCents - existing.creditAppliedCents;
         const frontendBase =
