@@ -40,6 +40,12 @@ export interface NormalizedPaymentStatus {
   paidAt: Date | null;
   /** Status original do gateway — preservado para auditoria. */
   rawStatus: string;
+  statusDetail?: string | null;
+  paymentTypeId?: string | null;
+  issuerId?: string | null;
+  transactionAmount?: number | null;
+  liveMode?: boolean | null;
+  authorizationCode?: string | null;
 }
 
 export interface ParsedWebhookEvent {
@@ -81,6 +87,12 @@ export interface PixPaymentResult {
   pixQrCodeBase64: string | null;
   pixExpiresAt: Date | null;
   rawStatus: string;
+  statusDetail?: string | null;
+  paymentTypeId?: string | null;
+  issuerId?: string | null;
+  transactionAmount?: number | null;
+  liveMode?: boolean | null;
+  authorizationCode?: string | null;
 }
 
 export interface IPaymentProvider {

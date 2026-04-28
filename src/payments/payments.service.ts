@@ -39,6 +39,7 @@ import {
   CREATOR_PAYOUT_UPDATED_EVENT,
   CreatorPayoutUpdatedEvent,
 } from './events/creator-payout-updated.event';
+import { formatStructuredLog } from './providers/mercado-pago/mercado-pago-logging.util';
 
 @Injectable()
 export class PaymentsService {
@@ -123,6 +124,15 @@ export class PaymentsService {
         existing.externalReference = intent.externalReference;
         existing.status = PaymentStatus.PROCESSING;
         await this.paymentRepo.save(existing);
+        this.logger.log(
+          formatStructuredLog('payment.intent_recreated', {
+            paymentId: existing.id,
+            contractRequestId: existing.contractRequestId,
+            preferenceId: intent.preferenceId,
+            externalReference: intent.externalReference,
+            transactionAmount: remainderCents / 100,
+          }),
+        );
       }
       return this.buildInitiateResponse(existing);
     }
@@ -199,7 +209,12 @@ export class PaymentsService {
           }
 
           this.logger.log(
-            `Pagamento 100% crédito: paymentId=${savedPayment.id} credit=${creditToApply}`,
+            formatStructuredLog('payment.credit_only.completed', {
+              paymentId: savedPayment.id,
+              contractRequestId: contract.id,
+              creditAppliedCents: creditToApply,
+              status: PaymentStatus.PAID,
+            }),
           );
           return {
             response: this.buildInitiateResponse(savedPayment),
@@ -259,7 +274,15 @@ export class PaymentsService {
     await this.paymentRepo.save(savedPayment);
 
     this.logger.log(
-      `Pagamento iniciado: paymentId=${savedPayment.id} total=${companyTotalAmountCents} credit=${creditToApply} remainder=${remainderCents}`,
+      formatStructuredLog('payment.intent_created', {
+        paymentId: savedPayment.id,
+        contractRequestId: savedPayment.contractRequestId,
+        preferenceId: intent.preferenceId,
+        externalReference: intent.externalReference,
+        totalAmountCents: companyTotalAmountCents,
+        creditAppliedCents: creditToApply,
+        remainderAmountCents: remainderCents,
+      }),
     );
 
     return this.buildInitiateResponse(savedPayment);
@@ -340,7 +363,13 @@ export class PaymentsService {
             occurredAt: new Date(),
           };
           this.logger.log(
-            `CreatorPayout criado (sync): id=${savedPayout.id} creatorUserId=${savedPayout.creatorUserId} amount=${savedPayout.amountCents}`,
+            formatStructuredLog('payment.card.creator_payout_created', {
+              paymentId: payment.id,
+              contractRequestId: payment.contractRequestId,
+              creatorPayoutId: savedPayout.id,
+              creatorUserId: savedPayout.creatorUserId,
+              amountCents: savedPayout.amountCents,
+            }),
           );
         }
 
@@ -398,7 +427,22 @@ export class PaymentsService {
     }
 
     this.logger.log(
-      `Cartão processado: paymentId=${payment.id} status=${result.status} mpId=${result.externalPaymentId}`,
+      formatStructuredLog('payment.card.processed', {
+        paymentId: payment.id,
+        contractRequestId: payment.contractRequestId,
+        externalPaymentId: result.externalPaymentId,
+        status: result.rawStatus,
+        normalizedStatus: result.status,
+        statusDetail: result.statusDetail ?? null,
+        paymentMethodId: result.paymentMethod,
+        paymentTypeId: result.paymentTypeId ?? null,
+        issuerId: result.issuerId ?? null,
+        installments: result.installments,
+        transactionAmount: result.transactionAmount ?? null,
+        liveMode: result.liveMode ?? null,
+        dateApproved: result.paidAt?.toISOString() ?? null,
+        authorizationCode: result.authorizationCode ?? null,
+      }),
     );
 
     return this.toResponseDto(payment);
@@ -429,7 +473,13 @@ export class PaymentsService {
       (payment.status === PaymentStatus.PROCESSING || payment.status === PaymentStatus.PENDING)
     ) {
       this.logger.log(
-        `PIX ativo retornado (idempotente): paymentId=${payment.id} expires=${payment.pixExpiresAt.toISOString()}`,
+        formatStructuredLog('payment.pix.idempotent_reuse', {
+          paymentId: payment.id,
+          contractRequestId: payment.contractRequestId,
+          externalPaymentId: payment.externalPaymentId,
+          status: payment.status,
+          pixExpiresAt: payment.pixExpiresAt.toISOString(),
+        }),
       );
       return this.toResponseDto(payment);
     }
@@ -450,7 +500,20 @@ export class PaymentsService {
     payment.pixExpiresAt = result.pixExpiresAt;
     // Não incluir pixCopyPaste/pixQrCodeBase64 no log (dados de pagamento)
     this.logger.log(
-      `PIX criado: paymentId=${payment.id} mpId=${result.externalPaymentId} expires=${result.pixExpiresAt?.toISOString() ?? 'null'}`,
+      formatStructuredLog('payment.pix.created', {
+        paymentId: payment.id,
+        contractRequestId: payment.contractRequestId,
+        externalPaymentId: result.externalPaymentId,
+        status: result.rawStatus,
+        normalizedStatus: result.status,
+        statusDetail: result.statusDetail ?? null,
+        paymentMethodId: result.paymentMethod,
+        paymentTypeId: result.paymentTypeId ?? null,
+        issuerId: result.issuerId ?? null,
+        transactionAmount: result.transactionAmount ?? null,
+        liveMode: result.liveMode ?? null,
+        pixExpiresAt: result.pixExpiresAt?.toISOString() ?? null,
+      }),
     );
 
     await this.paymentRepo.save(payment);

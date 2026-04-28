@@ -13,6 +13,11 @@ import {
   ProcessCardPaymentInput,
   ProcessPixPaymentInput,
 } from '../payment-provider.interface';
+import {
+  formatStructuredLog,
+  sanitizeMercadoPagoApiError,
+  sanitizeMercadoPagoPayment,
+} from './mercado-pago-logging.util';
 
 // point_of_interaction e date_of_expiration já estão nos tipos do SDK v2.12.0
 // (PaymentResponse em payment/commonTypes.d.ts). Nenhum cast extra necessário.
@@ -77,6 +82,16 @@ export class MercadoPagoProvider implements IPaymentProvider {
       },
     });
 
+    this.logger.log(
+      formatStructuredLog('mercado_pago.preference.created', {
+        paymentId: input.paymentId,
+        contractRequestId: input.contractRequestId,
+        preferenceId: response.id ?? null,
+        externalReference: response.external_reference ?? input.paymentId,
+        transactionAmount: input.amountCents / 100,
+      }),
+    );
+
     return {
       preferenceId: response.id ?? '',
       externalReference: input.paymentId,
@@ -85,35 +100,51 @@ export class MercadoPagoProvider implements IPaymentProvider {
 
   async processCardPayment(input: ProcessCardPaymentInput): Promise<NormalizedPaymentStatus> {
     const paymentClient = new MpPayment(this.client);
-    const mpPayment = await paymentClient.create({
-      body: {
-        transaction_amount: input.transactionAmount,
-        token: input.token,
-        payment_method_id: input.paymentMethodId,
-        issuer_id: input.issuerId ? Number(input.issuerId) : undefined,
-        installments: input.installments,
-        external_reference: input.paymentId,
-        payer: {
-          email: input.payerEmail,
-          ...(input.payerDocument && {
-            identification: {
-              type: input.payerDocument.type,
-              number: input.payerDocument.number,
-            },
-          }),
+    try {
+      const mpPayment = await paymentClient.create({
+        body: {
+          transaction_amount: input.transactionAmount,
+          token: input.token,
+          payment_method_id: input.paymentMethodId,
+          issuer_id: input.issuerId ? Number(input.issuerId) : undefined,
+          installments: input.installments,
+          external_reference: input.paymentId,
+          payer: {
+            email: input.payerEmail,
+            ...(input.payerDocument && {
+              identification: {
+                type: input.payerDocument.type,
+                number: input.payerDocument.number,
+              },
+            }),
+          },
         },
-      },
-    });
+      });
 
-    return {
-      status: this.mapMpStatus(mpPayment.status ?? ''),
-      externalPaymentId: String(mpPayment.id ?? ''),
-      externalReference: mpPayment.external_reference ?? null,
-      paymentMethod: mpPayment.payment_method_id ?? null,
-      installments: mpPayment.installments ?? null,
-      paidAt: mpPayment.date_approved ? new Date(mpPayment.date_approved) : null,
-      rawStatus: mpPayment.status ?? '',
-    };
+      this.logger.log(
+        formatStructuredLog(
+          'mercado_pago.card.payment_response',
+          sanitizeMercadoPagoPayment(mpPayment, {
+            paymentId: input.paymentId,
+          }),
+        ),
+      );
+
+      return this.normalizePaymentStatus(mpPayment);
+    } catch (error) {
+      this.logger.error(
+        formatStructuredLog(
+          'mercado_pago.card.payment_error',
+          sanitizeMercadoPagoApiError(error, {
+            paymentId: input.paymentId,
+            paymentMethodId: input.paymentMethodId,
+            installments: input.installments,
+            transactionAmount: input.transactionAmount,
+          }),
+        ),
+      );
+      throw error;
+    }
   }
 
   async processPixPayment(input: ProcessPixPaymentInput): Promise<PixPaymentResult> {
@@ -122,57 +153,95 @@ export class MercadoPagoProvider implements IPaymentProvider {
     // PIX expira em 30 minutos — explícito para controle da nossa lógica de retry.
     const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
 
-    const mpPayment = await paymentClient.create({
-      body: {
-        transaction_amount: input.transactionAmount,
-        payment_method_id: 'pix',
-        external_reference: input.paymentId,
-        date_of_expiration: expiresAt.toISOString(),
-        payer: {
-          email: input.payerEmail,
-          ...(input.payerDocument && {
-            identification: {
-              type: input.payerDocument.type,
-              number: input.payerDocument.number,
-            },
+    try {
+      const mpPayment = await paymentClient.create({
+        body: {
+          transaction_amount: input.transactionAmount,
+          payment_method_id: 'pix',
+          external_reference: input.paymentId,
+          date_of_expiration: expiresAt.toISOString(),
+          payer: {
+            email: input.payerEmail,
+            ...(input.payerDocument && {
+              identification: {
+                type: input.payerDocument.type,
+                number: input.payerDocument.number,
+              },
+            }),
+          },
+        } as Parameters<typeof paymentClient.create>[0]['body'],
+      });
+
+      const txData = mpPayment.point_of_interaction?.transaction_data;
+
+      this.logger.log(
+        formatStructuredLog(
+          'mercado_pago.pix.payment_response',
+          sanitizeMercadoPagoPayment(mpPayment, {
+            paymentId: input.paymentId,
           }),
-        },
-      } as Parameters<typeof paymentClient.create>[0]['body'],
-    });
-
-    const txData = mpPayment.point_of_interaction?.transaction_data;
-
-    if (!txData?.qr_code) {
-      this.logger.warn(
-        `PIX criado sem qr_code: mpId=${mpPayment.id} status=${mpPayment.status} — pode ser limitação de sandbox ou credenciais de teste`,
+        ),
       );
-    }
 
-    return {
-      status: this.mapMpStatus(mpPayment.status ?? ''),
-      externalPaymentId: String(mpPayment.id ?? ''),
-      externalReference: mpPayment.external_reference ?? null,
-      paymentMethod: 'pix',
-      pixCopyPaste: txData?.qr_code ?? null,
-      pixQrCodeBase64: txData?.qr_code_base64 ?? null,
-      pixExpiresAt: mpPayment.date_of_expiration ? new Date(mpPayment.date_of_expiration) : expiresAt,
-      rawStatus: mpPayment.status ?? '',
-    };
+      if (!txData?.qr_code) {
+        this.logger.warn(
+          formatStructuredLog(
+            'mercado_pago.pix.qr_code_missing',
+            sanitizeMercadoPagoPayment(mpPayment, {
+              paymentId: input.paymentId,
+            }),
+          ),
+        );
+      }
+
+      return {
+        ...this.normalizePaymentStatus(mpPayment),
+        paymentMethod: 'pix',
+        pixCopyPaste: txData?.qr_code ?? null,
+        pixQrCodeBase64: txData?.qr_code_base64 ?? null,
+        pixExpiresAt: mpPayment.date_of_expiration ? new Date(mpPayment.date_of_expiration) : expiresAt,
+      };
+    } catch (error) {
+      this.logger.error(
+        formatStructuredLog(
+          'mercado_pago.pix.payment_error',
+          sanitizeMercadoPagoApiError(error, {
+            paymentId: input.paymentId,
+            paymentMethodId: 'pix',
+            transactionAmount: input.transactionAmount,
+          }),
+        ),
+      );
+      throw error;
+    }
   }
 
   async getPaymentStatus(externalPaymentId: string): Promise<NormalizedPaymentStatus> {
     const paymentClient = new MpPayment(this.client);
-    const mpPayment = await paymentClient.get({ id: externalPaymentId });
+    try {
+      const mpPayment = await paymentClient.get({ id: externalPaymentId });
 
-    return {
-      status: this.mapMpStatus(mpPayment.status ?? ''),
-      externalPaymentId: String(mpPayment.id ?? externalPaymentId),
-      externalReference: mpPayment.external_reference ?? null,
-      paymentMethod: mpPayment.payment_method_id ?? null,
-      installments: mpPayment.installments ?? null,
-      paidAt: mpPayment.date_approved ? new Date(mpPayment.date_approved) : null,
-      rawStatus: mpPayment.status ?? '',
-    };
+      this.logger.log(
+        formatStructuredLog(
+          'mercado_pago.payment_status.response',
+          sanitizeMercadoPagoPayment(mpPayment, {
+            externalPaymentId,
+          }),
+        ),
+      );
+
+      return this.normalizePaymentStatus(mpPayment, externalPaymentId);
+    } catch (error) {
+      this.logger.error(
+        formatStructuredLog(
+          'mercado_pago.payment_status.error',
+          sanitizeMercadoPagoApiError(error, {
+            externalPaymentId,
+          }),
+        ),
+      );
+      throw error;
+    }
   }
 
   parseWebhookEvent(
@@ -262,5 +331,47 @@ export class MercadoPagoProvider implements IPaymentProvider {
         this.logger.warn(`Status MP desconhecido: ${mpStatus} — mapeado para PROCESSING`);
         return PaymentStatus.PROCESSING;
     }
+  }
+
+  private normalizePaymentStatus(
+    mpPayment: {
+      id?: string | number | null;
+      external_reference?: string | null;
+      payment_method_id?: string | null;
+      payment_type_id?: string | null;
+      issuer_id?: string | number | null;
+      installments?: number | null;
+      date_approved?: string | null;
+      status?: string | null;
+      status_detail?: string | null;
+      transaction_amount?: number | null;
+      live_mode?: boolean | null;
+      transaction_details?: unknown;
+    },
+    fallbackExternalPaymentId?: string,
+  ): NormalizedPaymentStatus {
+    const transactionDetails =
+      typeof mpPayment.transaction_details === 'object' && mpPayment.transaction_details !== null
+        ? mpPayment.transaction_details as Record<string, unknown>
+        : null;
+
+    return {
+      status: this.mapMpStatus(mpPayment.status ?? ''),
+      externalPaymentId: String(mpPayment.id ?? fallbackExternalPaymentId ?? ''),
+      externalReference: mpPayment.external_reference ?? null,
+      paymentMethod: mpPayment.payment_method_id ?? null,
+      installments: mpPayment.installments ?? null,
+      paidAt: mpPayment.date_approved ? new Date(mpPayment.date_approved) : null,
+      rawStatus: mpPayment.status ?? '',
+      statusDetail: mpPayment.status_detail ?? null,
+      paymentTypeId: mpPayment.payment_type_id ?? null,
+      issuerId: mpPayment.issuer_id != null ? String(mpPayment.issuer_id) : null,
+      transactionAmount: mpPayment.transaction_amount ?? null,
+      liveMode: mpPayment.live_mode ?? null,
+      authorizationCode:
+        typeof transactionDetails?.authorization_code === 'string'
+          ? transactionDetails.authorization_code
+          : null,
+    };
   }
 }

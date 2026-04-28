@@ -23,6 +23,7 @@ import {
   CREATOR_PAYOUT_UPDATED_EVENT,
   CreatorPayoutUpdatedEvent,
 } from '../events/creator-payout-updated.event';
+import { formatStructuredLog } from '../providers/mercado-pago/mercado-pago-logging.util';
 
 function isUniqueViolation(err: unknown): boolean {
   return (
@@ -83,7 +84,11 @@ export class WebhooksService {
     }
 
     this.logger.log(
-      `Webhook recebido: eventId=${parsed.externalEventId} type=${parsed.eventType} paymentId=${parsed.externalPaymentId}`,
+      formatStructuredLog('payment.webhook.received', {
+        webhookEventId: parsed.externalEventId,
+        webhookActionType: parsed.eventType,
+        externalPaymentId: parsed.externalPaymentId,
+      }),
     );
 
     // 3. Persiste o evento (idempotência via UNIQUE)
@@ -101,7 +106,11 @@ export class WebhooksService {
     } catch (err) {
       if (isUniqueViolation(err)) {
         this.logger.log(
-          `Evento duplicado ignorado: externalEventId=${parsed.externalEventId}`,
+          formatStructuredLog('payment.webhook.duplicate_ignored', {
+            webhookEventId: parsed.externalEventId,
+            webhookActionType: parsed.eventType,
+            externalPaymentId: parsed.externalPaymentId,
+          }),
         );
         return;
       }
@@ -116,7 +125,14 @@ export class WebhooksService {
         processingStatus: 'processed',
         processedAt: new Date(),
       });
-      this.logger.log(`Evento processado: id=${event.id}`);
+      this.logger.log(
+        formatStructuredLog('payment.webhook.processed', {
+          providerEventId: event.id,
+          webhookEventId: parsed.externalEventId,
+          webhookActionType: parsed.eventType,
+          externalPaymentId: parsed.externalPaymentId,
+        }),
+      );
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       const isOrphan = message.includes('orphan');
@@ -147,7 +163,14 @@ export class WebhooksService {
 
     if (!payment) {
       this.logger.warn(
-        `Payment não encontrado para externalRef=${normalized.externalReference ?? 'null'} externalPaymentId=${externalPaymentId}. Evento marcado como orphan.`,
+        formatStructuredLog('payment.webhook.orphan', {
+          externalReference: normalized.externalReference ?? null,
+          externalPaymentId,
+          status: normalized.rawStatus,
+          statusDetail: normalized.statusDetail ?? null,
+          paymentMethodId: normalized.paymentMethod,
+          paymentTypeId: normalized.paymentTypeId ?? null,
+        }),
       );
       throw new Error(
         `orphan: Payment não encontrado (externalReference=${normalized.externalReference}, externalPaymentId=${externalPaymentId})`,
@@ -162,19 +185,49 @@ export class WebhooksService {
       normalized.externalPaymentId !== payment.externalPaymentId
     ) {
       this.logger.warn(
-        `Webhook stale ignorado: paymentId=${payment.id} atual=${payment.externalPaymentId} recebido=${normalized.externalPaymentId}`,
+        formatStructuredLog('payment.webhook.stale_ignored', {
+          paymentId: payment.id,
+          contractRequestId: payment.contractRequestId,
+          currentExternalPaymentId: payment.externalPaymentId,
+          receivedExternalPaymentId: normalized.externalPaymentId,
+          status: normalized.rawStatus,
+          statusDetail: normalized.statusDetail ?? null,
+        }),
       );
       return;
     }
 
     this.logger.log(
-      `Atualizando Payment id=${payment.id} status: ${payment.status} → ${normalized.status}`,
+      formatStructuredLog('payment.webhook.status_sync', {
+        paymentId: payment.id,
+        contractRequestId: payment.contractRequestId,
+        externalPaymentId: normalized.externalPaymentId,
+        previousStatus: payment.status,
+        normalizedStatus: normalized.status,
+        status: normalized.rawStatus,
+        statusDetail: normalized.statusDetail ?? null,
+        paymentMethodId: normalized.paymentMethod,
+        paymentTypeId: normalized.paymentTypeId ?? null,
+        issuerId: normalized.issuerId ?? null,
+        installments: normalized.installments,
+        transactionAmount: normalized.transactionAmount ?? null,
+        liveMode: normalized.liveMode ?? null,
+        dateApproved: normalized.paidAt?.toISOString() ?? null,
+        authorizationCode: normalized.authorizationCode ?? null,
+      }),
     );
 
     // Evita reprocessar um pagamento já concluído (ex: 'paid' não deve voltar para 'processing')
     if (!this.shouldUpdateStatus(payment.status, normalized.status)) {
       this.logger.log(
-        `Transição de status ignorada: ${payment.status} → ${normalized.status}`,
+        formatStructuredLog('payment.webhook.transition_ignored', {
+          paymentId: payment.id,
+          contractRequestId: payment.contractRequestId,
+          previousStatus: payment.status,
+          normalizedStatus: normalized.status,
+          status: normalized.rawStatus,
+          statusDetail: normalized.statusDetail ?? null,
+        }),
       );
       return;
     }
@@ -211,7 +264,13 @@ export class WebhooksService {
           occurredAt: new Date(),
         };
         this.logger.log(
-          `CreatorPayout criado: id=${payout.id} creatorUserId=${payout.creatorUserId} amount=${payout.amountCents}`,
+          formatStructuredLog('payment.webhook.creator_payout_created', {
+            paymentId: payment.id,
+            contractRequestId: payment.contractRequestId,
+            creatorPayoutId: payout.id,
+            creatorUserId: payout.creatorUserId,
+            amountCents: payout.amountCents,
+          }),
         );
 
         // 5. Transição de contrato: PENDING_PAYMENT → PENDING_ACCEPTANCE
@@ -262,11 +321,19 @@ export class WebhooksService {
               manager,
             );
             this.logger.log(
-              `Crédito debitado no webhook: paymentId=${payment.id} amount=${payment.creditAppliedCents}`,
+              formatStructuredLog('payment.webhook.credit_debited', {
+                paymentId: payment.id,
+                contractRequestId: payment.contractRequestId,
+                creditAppliedCents: payment.creditAppliedCents,
+              }),
             );
           } else {
             this.logger.log(
-              `Crédito já debitado anteriormente (idempotência): paymentId=${payment.id}`,
+              formatStructuredLog('payment.webhook.credit_already_debited', {
+                paymentId: payment.id,
+                contractRequestId: payment.contractRequestId,
+                creditAppliedCents: payment.creditAppliedCents,
+              }),
             );
           }
         }
@@ -327,7 +394,12 @@ export class WebhooksService {
     if (!event) throw new Error(`Evento não encontrado: ${eventId}`);
     if (!event.externalPaymentId) throw new Error('Evento sem externalPaymentId');
 
-    this.logger.log(`Reprocessando evento: id=${eventId}`);
+    this.logger.log(
+      formatStructuredLog('payment.webhook.reprocessing', {
+        providerEventId: eventId,
+        externalPaymentId: event.externalPaymentId,
+      }),
+    );
     await this.applyPaymentUpdate(eventId, event.externalPaymentId);
     await this.eventRepo.update(eventId, {
       processingStatus: 'processed',
