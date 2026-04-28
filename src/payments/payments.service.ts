@@ -14,12 +14,15 @@ import { ContractRequest } from '../contract-requests/entities/contract-request.
 import { ContractRequestStatus } from '../common/enums/contract-request-status.enum';
 import { PaymentStatus as ContractPaymentStatus } from '../common/enums/payment-status.enum';
 import { AuthUser } from '../common/interfaces/auth-user.interface';
+import { JobType } from '../job-types/entities/job-type.entity';
+import { Profile } from '../profiles/entities/profile.entity';
 import { User } from '../users/entities/user.entity';
 import { Payment } from './entities/payment.entity';
 import { PaymentStatus } from './enums/payment-status.enum';
 import { PayoutStatus } from './enums/payout-status.enum';
 import { SettlementStatus } from './enums/settlement-status.enum';
 import {
+  CreatePaymentIntentInput,
   PAYMENT_PROVIDER,
   IPaymentProvider,
 } from './providers/payment-provider.interface';
@@ -67,12 +70,16 @@ export class PaymentsService {
     authUser: AuthUser,
   ): Promise<InitiatePaymentResponseDto> {
     // 1. Resolve user interno
-    const user = await this.userRepo.findOne({ where: { authUserId: authUser.authUserId } });
+    const user = await this.userRepo.findOne({
+      where: { authUserId: authUser.authUserId },
+      relations: { profile: true },
+    });
     if (!user) throw new NotFoundException('Usuário não encontrado');
 
     // 2. Valida o contrato
     const contract = await this.contractRequestRepo.findOne({
       where: { id: dto.contractRequestId, companyUserId: user.id },
+      relations: { jobType: true },
     });
     if (!contract) throw new NotFoundException('Contrato não encontrado');
 
@@ -142,8 +149,10 @@ export class PaymentsService {
           amountCents: remainderCents,
           currency: 'BRL',
           payerEmail: authUser.email ?? '',
-          description: `Contrato UGC #${contract.id.slice(0, 8)}`,
+          payerFirstName: this.getPayerFirstName(user.profile),
+          payerLastName: this.getPayerLastName(user.profile),
           contractRequestId: contract.id,
+          item: this.buildMercadoPagoItem(contract, remainderCents),
           callbackUrls: {
             success: `${frontendBase}/pagamento/sucesso?paymentId=${existing.id}`,
             failure: `${frontendBase}/pagamento/falhou?paymentId=${existing.id}`,
@@ -289,8 +298,10 @@ export class PaymentsService {
       amountCents: remainderCents,
       currency: 'BRL',
       payerEmail: authUser.email ?? '',
-      description: `Contrato UGC #${contract.id.slice(0, 8)}`,
+      payerFirstName: this.getPayerFirstName(user.profile),
+      payerLastName: this.getPayerLastName(user.profile),
       contractRequestId: contract.id,
+      item: this.buildMercadoPagoItem(contract, remainderCents),
       callbackUrls: {
         success: `${frontendBase}/pagamento/sucesso?paymentId=${savedPayment.id}`,
         failure: `${frontendBase}/pagamento/falhou?paymentId=${savedPayment.id}`,
@@ -652,5 +663,47 @@ export class PaymentsService {
     if (payoutEvent) {
       this.eventEmitter.emit(CREATOR_PAYOUT_UPDATED_EVENT, payoutEvent);
     }
+  }
+
+  private buildMercadoPagoItem(
+    contract: ContractRequest & { jobType?: JobType | null },
+    amountCents: number,
+  ): CreatePaymentIntentInput['item'] {
+    const title = contract.jobType?.name?.trim() || 'Servico UGC Local';
+    const description =
+      contract.description?.trim() || `Contrato UGC #${contract.id.slice(0, 8)}`;
+
+    return {
+      id: contract.id,
+      title,
+      description,
+      categoryId: 'services',
+      quantity: 1,
+      unitPrice: amountCents / 100,
+    };
+  }
+
+  private getPayerFirstName(profile?: Profile | null): string | null {
+    return this.splitProfileName(profile?.name).firstName;
+  }
+
+  private getPayerLastName(profile?: Profile | null): string | null {
+    return this.splitProfileName(profile?.name).lastName;
+  }
+
+  private splitProfileName(name?: string | null): {
+    firstName: string | null;
+    lastName: string | null;
+  } {
+    const normalized = name?.trim().replace(/\s+/g, ' ');
+    if (!normalized) {
+      return { firstName: null, lastName: null };
+    }
+
+    const [firstName, ...rest] = normalized.split(' ');
+    return {
+      firstName: firstName || null,
+      lastName: rest.length > 0 ? rest.join(' ') : null,
+    };
   }
 }

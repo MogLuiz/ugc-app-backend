@@ -43,6 +43,8 @@ export class MercadoPagoProvider implements IPaymentProvider {
   private readonly publicKey: string;
   private readonly apiBaseUrl: string;
   private readonly frontendBaseUrl: string;
+  private readonly nodeEnv: string;
+  private readonly statementDescriptor: string;
 
   constructor(private readonly configService: ConfigService) {
     const accessToken = this.configService.get<string>('MP_ACCESS_TOKEN') ?? '';
@@ -50,26 +52,40 @@ export class MercadoPagoProvider implements IPaymentProvider {
     this.publicKey = this.configService.get<string>('MP_PUBLIC_KEY') ?? '';
     this.apiBaseUrl = this.configService.get<string>('API_BASE_URL') ?? '';
     this.frontendBaseUrl = this.configService.get<string>('FRONTEND_BASE_URL') ?? '';
+    this.nodeEnv = this.configService.get<string>('NODE_ENV') ?? 'development';
+    this.statementDescriptor = this.normalizeStatementDescriptor(
+      this.configService.get<string>('MP_STATEMENT_DESCRIPTOR') ?? 'UGC LOCAL',
+    );
 
     this.client = new MercadoPago({ accessToken });
   }
 
   async createPaymentIntent(input: CreatePaymentIntentInput): Promise<PaymentIntentResult> {
     const preference = new Preference(this.client);
+    const notificationUrl = `${this.apiBaseUrl}/webhooks/mercado-pago`;
+
+    this.assertMercadoPagoUrl('notification_url', notificationUrl);
+    this.assertMercadoPagoUrl('back_urls.success', input.callbackUrls.success);
+    this.assertMercadoPagoUrl('back_urls.failure', input.callbackUrls.failure);
+    this.assertMercadoPagoUrl('back_urls.pending', input.callbackUrls.pending);
 
     const response = await preference.create({
       body: {
         items: [
           {
-            id: input.contractRequestId,
-            title: input.description,
-            quantity: 1,
-            unit_price: input.amountCents / 100,
-            currency_id: 'BRL',
+            id: input.item.id,
+            title: input.item.title,
+            description: input.item.description,
+            category_id: input.item.categoryId,
+            quantity: input.item.quantity,
+            unit_price: input.item.unitPrice,
+            currency_id: input.currency,
           },
         ],
         payer: {
           email: input.payerEmail,
+          ...(input.payerFirstName ? { first_name: input.payerFirstName } : {}),
+          ...(input.payerLastName ? { last_name: input.payerLastName } : {}),
         },
         external_reference: input.paymentId,
         back_urls: {
@@ -77,8 +93,8 @@ export class MercadoPagoProvider implements IPaymentProvider {
           failure: input.callbackUrls.failure,
           pending: input.callbackUrls.pending,
         },
-        notification_url: `${this.apiBaseUrl}/webhooks/mercado-pago`,
-        statement_descriptor: 'UGC PLATAFORMA',
+        notification_url: notificationUrl,
+        statement_descriptor: this.statementDescriptor,
       },
     });
 
@@ -304,6 +320,41 @@ export class MercadoPagoProvider implements IPaymentProvider {
 
   getPublicKey(): string {
     return this.publicKey;
+  }
+
+  private normalizeStatementDescriptor(value: string): string {
+    const normalized = value.trim().replace(/\s+/g, ' ');
+    const fallback = 'UGC LOCAL';
+
+    if (!normalized) {
+      return fallback;
+    }
+
+    return normalized.slice(0, 13);
+  }
+
+  private assertMercadoPagoUrl(field: string, value: string): void {
+    let parsed: URL;
+    try {
+      parsed = new URL(value);
+    } catch {
+      throw new Error(`Mercado Pago ${field} inválida: ${value}`);
+    }
+
+    if (this.nodeEnv !== 'production') {
+      return;
+    }
+
+    const hostname = parsed.hostname.toLowerCase();
+    const isLocalhost =
+      hostname === 'localhost' ||
+      hostname === '127.0.0.1' ||
+      hostname === '0.0.0.0' ||
+      hostname.endsWith('.local');
+
+    if (parsed.protocol !== 'https:' || isLocalhost) {
+      throw new Error(`Mercado Pago ${field} deve usar HTTPS público em produção: ${value}`);
+    }
   }
 
   // ---------------------------------------------------------------------------

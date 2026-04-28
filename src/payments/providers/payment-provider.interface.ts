@@ -8,8 +8,17 @@ export interface CreatePaymentIntentInput {
   amountCents: number;
   currency: string;
   payerEmail: string;
-  description: string;
+  payerFirstName?: string | null;
+  payerLastName?: string | null;
   contractRequestId: string;
+  item: {
+    id: string;
+    title: string;
+    description: string;
+    categoryId: string;
+    quantity: number;
+    unitPrice: number;
+  };
   callbackUrls: {
     success: string;
     failure: string;

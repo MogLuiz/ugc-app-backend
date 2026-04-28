@@ -174,6 +174,10 @@ export class EnvValidation {
   @IsString()
   MP_WEBHOOK_SECRET!: string;
 
+  @IsOptional()
+  @IsString()
+  MP_STATEMENT_DESCRIPTOR: string = 'UGC LOCAL';
+
   // URLs base para callbacks e webhooks
   @IsString()
   API_BASE_URL!: string;
@@ -286,6 +290,8 @@ export function validateEnv(config: Record<string, unknown>): EnvValidation {
     }
   }
 
+  validateMercadoPagoProductionUrls(normalizedConfig);
+
   return validated;
 }
 
@@ -355,5 +361,43 @@ function isValidUri(value: string): boolean {
     return parsed.protocol.length > 1;
   } catch {
     return false;
+  }
+}
+
+function validateMercadoPagoProductionUrls(config: Record<string, unknown>): void {
+  if (config.NODE_ENV !== NodeEnv.production) {
+    return;
+  }
+
+  for (const field of ['API_BASE_URL', 'FRONTEND_URL', 'FRONTEND_BASE_URL'] as const) {
+    const rawValue = config[field];
+    if (typeof rawValue !== 'string' || rawValue.trim() === '') {
+      throw new Error(
+        `[CONFIG ERROR] Invalid environment variable ${field}: must be configured in production`,
+      );
+    }
+
+    const value = rawValue.trim();
+    let parsed: URL;
+    try {
+      parsed = new URL(value);
+    } catch {
+      throw new Error(
+        `[CONFIG ERROR] Invalid environment variable ${field}: must be a valid URI`,
+      );
+    }
+
+    const hostname = parsed.hostname.toLowerCase();
+    const isLocalhost =
+      hostname === 'localhost' ||
+      hostname === '127.0.0.1' ||
+      hostname === '0.0.0.0' ||
+      hostname.endsWith('.local');
+
+    if (parsed.protocol !== 'https:' || isLocalhost) {
+      throw new Error(
+        `[CONFIG ERROR] Invalid environment variable ${field}: must use a public HTTPS URL in production`,
+      );
+    }
   }
 }
