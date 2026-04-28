@@ -131,6 +131,22 @@ export class Payment {
   @Column({ name: 'paid_at', type: 'timestamptz', nullable: true })
   paidAt: Date | null;
 
+  /** 'card' | 'pix' | 'credit' — null para pagamentos legados. */
+  @Column({ name: 'payment_type', type: 'varchar', length: 10, nullable: true })
+  paymentType: 'card' | 'pix' | 'credit' | null;
+
+  /** Código EMV copia-e-cola do PIX (null para cartão). */
+  @Column({ name: 'pix_copy_paste', type: 'text', nullable: true })
+  pixCopyPaste: string | null;
+
+  /** QR code como base64 PNG retornado pelo Mercado Pago (null para cartão). */
+  @Column({ name: 'pix_qr_code_base64', type: 'text', nullable: true })
+  pixQrCodeBase64: string | null;
+
+  /** Data/hora de expiração do QR PIX (null para cartão). */
+  @Column({ name: 'pix_expires_at', type: 'timestamptz', nullable: true })
+  pixExpiresAt: Date | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

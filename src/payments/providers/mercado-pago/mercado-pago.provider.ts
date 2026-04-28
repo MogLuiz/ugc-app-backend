@@ -9,8 +9,13 @@ import {
   NormalizedPaymentStatus,
   ParsedWebhookEvent,
   PaymentIntentResult,
+  PixPaymentResult,
   ProcessCardPaymentInput,
+  ProcessPixPaymentInput,
 } from '../payment-provider.interface';
+
+// point_of_interaction e date_of_expiration já estão nos tipos do SDK v2.12.0
+// (PaymentResponse em payment/commonTypes.d.ts). Nenhum cast extra necessário.
 
 type MpWebhookPayload = {
   id?: number | string;
@@ -107,6 +112,50 @@ export class MercadoPagoProvider implements IPaymentProvider {
       paymentMethod: mpPayment.payment_method_id ?? null,
       installments: mpPayment.installments ?? null,
       paidAt: mpPayment.date_approved ? new Date(mpPayment.date_approved) : null,
+      rawStatus: mpPayment.status ?? '',
+    };
+  }
+
+  async processPixPayment(input: ProcessPixPaymentInput): Promise<PixPaymentResult> {
+    const paymentClient = new MpPayment(this.client);
+
+    // PIX expira em 30 minutos — explícito para controle da nossa lógica de retry.
+    const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
+
+    const mpPayment = await paymentClient.create({
+      body: {
+        transaction_amount: input.transactionAmount,
+        payment_method_id: 'pix',
+        external_reference: input.paymentId,
+        date_of_expiration: expiresAt.toISOString(),
+        payer: {
+          email: input.payerEmail,
+          ...(input.payerDocument && {
+            identification: {
+              type: input.payerDocument.type,
+              number: input.payerDocument.number,
+            },
+          }),
+        },
+      } as Parameters<typeof paymentClient.create>[0]['body'],
+    });
+
+    const txData = mpPayment.point_of_interaction?.transaction_data;
+
+    if (!txData?.qr_code) {
+      this.logger.warn(
+        `PIX criado sem qr_code: mpId=${mpPayment.id} status=${mpPayment.status} — pode ser limitação de sandbox ou credenciais de teste`,
+      );
+    }
+
+    return {
+      status: this.mapMpStatus(mpPayment.status ?? ''),
+      externalPaymentId: String(mpPayment.id ?? ''),
+      externalReference: mpPayment.external_reference ?? null,
+      paymentMethod: 'pix',
+      pixCopyPaste: txData?.qr_code ?? null,
+      pixQrCodeBase64: txData?.qr_code_base64 ?? null,
+      pixExpiresAt: mpPayment.date_of_expiration ? new Date(mpPayment.date_of_expiration) : expiresAt,
       rawStatus: mpPayment.status ?? '',
     };
   }

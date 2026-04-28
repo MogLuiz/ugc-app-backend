@@ -282,12 +282,22 @@ export class PaymentsService {
       throw new ConflictException('Este pagamento já foi processado');
     }
 
+    // ── Branch PIX ──────────────────────────────────────────────────────────
+    if (dto.paymentMethodId === 'pix') {
+      return this.processPixBranch(payment, dto);
+    }
+
+    // ── Branch Cartão ────────────────────────────────────────────────────────
+    if (!dto.token) {
+      throw new BadRequestException('Token é obrigatório para pagamentos com cartão');
+    }
+
     const result = await this.provider.processCardPayment({
       paymentId: payment.id,
       token: dto.token,
       paymentMethodId: dto.paymentMethodId,
       issuerId: dto.issuerId,
-      installments: dto.installments,
+      installments: dto.installments ?? 1,
       transactionAmount: dto.transactionAmount,
       payerEmail: dto.payerEmail,
       payerDocument: dto.payerDocument,
@@ -297,6 +307,7 @@ export class PaymentsService {
     payment.paymentMethod = result.paymentMethod;
     payment.installments = result.installments;
     payment.status = result.status;
+    payment.paymentType = 'card';
 
     if (result.status === PaymentStatus.PAID) {
       payment.paidAt = result.paidAt ?? new Date();
@@ -387,9 +398,62 @@ export class PaymentsService {
     }
 
     this.logger.log(
-      `Pagamento processado: paymentId=${payment.id} status=${result.status} mpId=${result.externalPaymentId}`,
+      `Cartão processado: paymentId=${payment.id} status=${result.status} mpId=${result.externalPaymentId}`,
     );
 
+    return this.toResponseDto(payment);
+  }
+
+  /**
+   * Cria (ou reutiliza) um pagamento PIX no Mercado Pago.
+   *
+   * Anti-duplicata: se já existe um PIX ativo (PROCESSING + não expirado),
+   * retorna os dados existentes sem criar novo pagamento no MP.
+   * Isso protege contra duplo-submit e double-click.
+   *
+   * Retry seguro: se o PIX anterior expirou ou falhou, cria novo pagamento
+   * substituindo externalPaymentId. Qualquer webhook do PIX antigo é ignorado
+   * pelo stale-ID check no WebhooksService.
+   */
+  private async processPixBranch(
+    payment: Payment,
+    dto: ProcessPaymentDto,
+  ): Promise<PaymentResponseDto> {
+    const now = new Date();
+
+    // Anti-duplicata: PIX ativo não expirado → retornar idempotente
+    if (
+      payment.externalPaymentId &&
+      payment.pixExpiresAt &&
+      payment.pixExpiresAt > now &&
+      (payment.status === PaymentStatus.PROCESSING || payment.status === PaymentStatus.PENDING)
+    ) {
+      this.logger.log(
+        `PIX ativo retornado (idempotente): paymentId=${payment.id} expires=${payment.pixExpiresAt.toISOString()}`,
+      );
+      return this.toResponseDto(payment);
+    }
+
+    const result = await this.provider.processPixPayment({
+      paymentId: payment.id,
+      transactionAmount: dto.transactionAmount,
+      payerEmail: dto.payerEmail,
+      payerDocument: dto.payerDocument,
+    });
+
+    payment.externalPaymentId = result.externalPaymentId;
+    payment.paymentMethod = result.paymentMethod;
+    payment.paymentType = 'pix';
+    payment.status = result.status;
+    payment.pixCopyPaste = result.pixCopyPaste;
+    payment.pixQrCodeBase64 = result.pixQrCodeBase64;
+    payment.pixExpiresAt = result.pixExpiresAt;
+    // Não incluir pixCopyPaste/pixQrCodeBase64 no log (dados de pagamento)
+    this.logger.log(
+      `PIX criado: paymentId=${payment.id} mpId=${result.externalPaymentId} expires=${result.pixExpiresAt?.toISOString() ?? 'null'}`,
+    );
+
+    await this.paymentRepo.save(payment);
     return this.toResponseDto(payment);
   }
 
@@ -463,6 +527,10 @@ export class PaymentsService {
       paidAt: payment.paidAt,
       createdAt: payment.createdAt,
       updatedAt: payment.updatedAt,
+      paymentType: payment.paymentType ?? null,
+      pixCopyPaste: payment.pixCopyPaste ?? null,
+      pixQrCodeBase64: payment.pixQrCodeBase64 ?? null,
+      pixExpiresAt: payment.pixExpiresAt ?? null,
     };
   }
 

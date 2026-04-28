@@ -154,6 +154,19 @@ export class WebhooksService {
       );
     }
 
+    // Stale-ID check: protege retentativas de PIX.
+    // Se o externalPaymentId do webhook não bate com o atual do Payment,
+    // o evento é de uma tentativa anterior (expirada/cancelada). Ignorar.
+    if (
+      payment.externalPaymentId &&
+      normalized.externalPaymentId !== payment.externalPaymentId
+    ) {
+      this.logger.warn(
+        `Webhook stale ignorado: paymentId=${payment.id} atual=${payment.externalPaymentId} recebido=${normalized.externalPaymentId}`,
+      );
+      return;
+    }
+
     this.logger.log(
       `Atualizando Payment id=${payment.id} status: ${payment.status} → ${normalized.status}`,
     );

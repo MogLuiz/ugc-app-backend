@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException } from '@nestjs/common';
 import { PaymentsService } from './payments.service';
 import { ContractRequestStatus } from '../common/enums/contract-request-status.enum';
 import { PaymentStatus } from './enums/payment-status.enum';
+import { PayoutStatus } from './enums/payout-status.enum';
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
@@ -12,6 +13,7 @@ const userRepo = { findOne: jest.fn() };
 const provider = {
   createPaymentIntent: jest.fn(),
   processCardPayment: jest.fn(),
+  processPixPayment: jest.fn(),
   getPublicKey: jest.fn().mockReturnValue('pk_test'),
 };
 const configService = { get: jest.fn() };
@@ -36,6 +38,7 @@ const USER = { id: 'user-1', authUserId: AUTH_USER.authUserId };
 
 const PAST = new Date('2000-01-01T00:00:00Z');
 const FUTURE = new Date('2099-01-01T00:00:00Z');
+const PIX_EXPIRES_FUTURE = new Date(Date.now() + 25 * 60 * 1000); // 25 min
 
 const BASE_CONTRACT = {
   companyUserId: USER.id,
@@ -172,5 +175,188 @@ describe('PaymentsService.initiatePayment — expiration guard (KAN-66)', () => 
     await expect(
       service.initiatePayment({ contractRequestId: 'contract-5' }, AUTH_USER),
     ).rejects.toThrow(ConflictException);
+  });
+});
+
+// ─── KAN-72/73: processPayment PIX ───────────────────────────────────────────
+
+const BASE_PAYMENT = {
+  id: 'payment-pix-1',
+  companyUserId: USER.id,
+  creatorUserId: 'creator-1',
+  contractRequestId: 'contract-pix-1',
+  companyTotalAmountCents: 10000,
+  creatorPayoutAmountCents: 8000,
+  creditAppliedCents: 0,
+  currency: 'BRL',
+  gatewayName: 'mercado_pago',
+  payoutStatus: PayoutStatus.NOT_DUE,
+  externalPaymentId: null,
+  pixCopyPaste: null,
+  pixQrCodeBase64: null,
+  pixExpiresAt: null,
+  paymentType: null,
+};
+
+const PIX_PROVIDER_RESULT = {
+  status: PaymentStatus.PROCESSING,
+  externalPaymentId: 'mp-pix-999',
+  externalReference: 'payment-pix-1',
+  paymentMethod: 'pix',
+  pixCopyPaste: '00020101...',
+  pixQrCodeBase64: 'iVBORw...',
+  pixExpiresAt: PIX_EXPIRES_FUTURE,
+  rawStatus: 'pending',
+};
+
+const PIX_DTO = {
+  paymentMethodId: 'pix',
+  token: null,
+  transactionAmount: 100,
+  payerEmail: 'company@test.com',
+  payerDocument: { type: 'CPF', number: '12345678900' },
+  issuerId: null,
+};
+
+describe('PaymentsService.processPayment — PIX (KAN-72)', () => {
+  it('cria PIX no MP e persiste pixCopyPaste/pixExpiresAt', async () => {
+    userRepo.findOne.mockResolvedValue(USER);
+    paymentRepo.findOne.mockResolvedValue({
+      ...BASE_PAYMENT,
+      status: PaymentStatus.PROCESSING,
+    });
+    provider.processPixPayment.mockResolvedValue(PIX_PROVIDER_RESULT);
+    paymentRepo.save.mockImplementation((p: typeof BASE_PAYMENT) => Promise.resolve(p));
+
+    const result = await service.processPayment('payment-pix-1', PIX_DTO as never, AUTH_USER);
+
+    expect(provider.processPixPayment).toHaveBeenCalledWith({
+      paymentId: 'payment-pix-1',
+      transactionAmount: 100,
+      payerEmail: 'company@test.com',
+      payerDocument: { type: 'CPF', number: '12345678900' },
+    });
+    expect(paymentRepo.save).toHaveBeenCalled();
+    expect(result.pixCopyPaste).toBe('00020101...');
+    expect(result.pixExpiresAt).toBe(PIX_EXPIRES_FUTURE);
+    expect(result.paymentType).toBe('pix');
+  });
+
+  it('retorna PIX existente (idempotente) quando ativo e não expirado', async () => {
+    userRepo.findOne.mockResolvedValue(USER);
+    paymentRepo.findOne.mockResolvedValue({
+      ...BASE_PAYMENT,
+      status: PaymentStatus.PROCESSING,
+      externalPaymentId: 'mp-pix-existing',
+      pixCopyPaste: '00020101existing...',
+      pixQrCodeBase64: 'base64existing',
+      pixExpiresAt: PIX_EXPIRES_FUTURE,
+      paymentType: 'pix',
+    });
+
+    const result = await service.processPayment('payment-pix-1', PIX_DTO as never, AUTH_USER);
+
+    expect(provider.processPixPayment).not.toHaveBeenCalled();
+    expect(result.pixCopyPaste).toBe('00020101existing...');
+  });
+
+  it('cria novo PIX quando anterior está expirado (retry KAN-73)', async () => {
+    userRepo.findOne.mockResolvedValue(USER);
+    paymentRepo.findOne.mockResolvedValue({
+      ...BASE_PAYMENT,
+      status: PaymentStatus.PROCESSING,
+      externalPaymentId: 'mp-pix-old',
+      pixCopyPaste: '00020101old...',
+      pixExpiresAt: PAST, // expirado
+      paymentType: 'pix',
+    });
+    provider.processPixPayment.mockResolvedValue(PIX_PROVIDER_RESULT);
+    paymentRepo.save.mockImplementation((p: typeof BASE_PAYMENT) => Promise.resolve(p));
+
+    const result = await service.processPayment('payment-pix-1', PIX_DTO as never, AUTH_USER);
+
+    expect(provider.processPixPayment).toHaveBeenCalled();
+    expect(result.pixCopyPaste).toBe('00020101...');
+  });
+
+  it('cria novo PIX quando anterior foi CANCELED (retry KAN-73)', async () => {
+    userRepo.findOne.mockResolvedValue(USER);
+    paymentRepo.findOne.mockResolvedValue({
+      ...BASE_PAYMENT,
+      status: PaymentStatus.CANCELED,
+      externalPaymentId: 'mp-pix-old',
+      pixCopyPaste: '00020101old...',
+      pixExpiresAt: PAST,
+      paymentType: 'pix',
+    });
+    provider.processPixPayment.mockResolvedValue(PIX_PROVIDER_RESULT);
+    paymentRepo.save.mockImplementation((p: typeof BASE_PAYMENT) => Promise.resolve(p));
+
+    await service.processPayment('payment-pix-1', PIX_DTO as never, AUTH_USER);
+
+    expect(provider.processPixPayment).toHaveBeenCalled();
+  });
+
+  it('lança ConflictException se PIX já está PAID', async () => {
+    userRepo.findOne.mockResolvedValue(USER);
+    paymentRepo.findOne.mockResolvedValue({
+      ...BASE_PAYMENT,
+      status: PaymentStatus.PAID,
+    });
+
+    await expect(
+      service.processPayment('payment-pix-1', PIX_DTO as never, AUTH_USER),
+    ).rejects.toThrow(ConflictException);
+
+    expect(provider.processPixPayment).not.toHaveBeenCalled();
+  });
+});
+
+// ─── KAN-72: processPayment Cartão — sem regressão ───────────────────────────
+
+describe('PaymentsService.processPayment — Cartão sem regressão (KAN-72)', () => {
+  it('lança BadRequestException se token ausente para cartão', async () => {
+    userRepo.findOne.mockResolvedValue(USER);
+    paymentRepo.findOne.mockResolvedValue({
+      ...BASE_PAYMENT,
+      status: PaymentStatus.PROCESSING,
+    });
+
+    await expect(
+      service.processPayment(
+        'payment-pix-1',
+        { paymentMethodId: 'visa', token: null, transactionAmount: 100, payerEmail: 'x@x.com', payerDocument: null, issuerId: null } as never,
+        AUTH_USER,
+      ),
+    ).rejects.toThrow(BadRequestException);
+
+    expect(provider.processCardPayment).not.toHaveBeenCalled();
+  });
+
+  it('não chama processPixPayment para pagamento com cartão', async () => {
+    userRepo.findOne.mockResolvedValue(USER);
+    paymentRepo.findOne.mockResolvedValue({
+      ...BASE_PAYMENT,
+      status: PaymentStatus.PROCESSING,
+    });
+    provider.processCardPayment.mockResolvedValue({
+      status: PaymentStatus.PROCESSING,
+      externalPaymentId: 'mp-card-1',
+      externalReference: null,
+      paymentMethod: 'visa',
+      installments: 1,
+      paidAt: null,
+      rawStatus: 'in_process',
+    });
+    paymentRepo.save.mockImplementation((p: typeof BASE_PAYMENT) => Promise.resolve(p));
+
+    await service.processPayment(
+      'payment-pix-1',
+      { paymentMethodId: 'visa', token: 'tok_123', transactionAmount: 100, payerEmail: 'x@x.com', payerDocument: null, issuerId: null, installments: 1 } as never,
+      AUTH_USER,
+    );
+
+    expect(provider.processPixPayment).not.toHaveBeenCalled();
+    expect(provider.processCardPayment).toHaveBeenCalled();
   });
 });

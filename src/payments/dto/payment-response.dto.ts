@@ -38,4 +38,8 @@ export class PaymentResponseDto {
   paidAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
+  paymentType: string | null;
+  pixCopyPaste: string | null;
+  pixQrCodeBase64: string | null;
+  pixExpiresAt: Date | null;
 }

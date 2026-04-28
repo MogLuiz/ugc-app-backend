@@ -20,10 +20,14 @@ class PayerDocumentDto {
 }
 
 export class ProcessPaymentDto {
-  /** Token do cartão gerado pelo Brick */
+  /**
+   * Token do cartão gerado pelo Brick.
+   * Obrigatório para cartão/débito; ausente (null) para PIX.
+   * Validação de presença feita no service por paymentMethodId.
+   */
   @IsString()
-  @IsNotEmpty()
-  token: string;
+  @IsOptional()
+  token?: string | null;
 
   @IsString()
   @IsNotEmpty()
@@ -35,7 +39,8 @@ export class ProcessPaymentDto {
 
   @IsInt()
   @Min(1)
-  installments: number;
+  @IsOptional()
+  installments?: number;
 
   @IsNumber()
   @Min(0.01)

@@ -43,6 +43,8 @@ import { OfferAndContractFinancials1767001400000 } from './migrations/1767001400
 import { PaymentFinancials1767001500000 } from './migrations/1767001500000-PaymentFinancials';
 import { AddNotificationsBase1767001600000 } from './migrations/1767001600000-AddNotificationsBase';
 import { DropStalePaymentsAmountsConstraint1767001700000 } from './migrations/1767001700000-DropStalePaymentsAmountsConstraint';
+import { AddPixFieldsToPayments1767001800000 } from './migrations/1767001800000-AddPixFieldsToPayments';
+import { AlterPixCopyPasteToText1767001900000 } from './migrations/1767001900000-AlterPixCopyPasteToText';
 
 config();
 
@@ -103,6 +105,8 @@ export const AppDataSource = new DataSource(
         PaymentFinancials1767001500000,
         AddNotificationsBase1767001600000,
         DropStalePaymentsAmountsConstraint1767001700000,
+        AddPixFieldsToPayments1767001800000,
+        AlterPixCopyPasteToText1767001900000,
       ],
       synchronize: false,
       logging: process.env.NODE_ENV === 'development',
@@ -161,6 +165,8 @@ export const AppDataSource = new DataSource(
         PaymentFinancials1767001500000,
         AddNotificationsBase1767001600000,
         DropStalePaymentsAmountsConstraint1767001700000,
+        AddPixFieldsToPayments1767001800000,
+        AlterPixCopyPasteToText1767001900000,
       ],
       synchronize: false,
       logging: process.env.NODE_ENV === 'development',

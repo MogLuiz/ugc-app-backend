@@ -64,9 +64,29 @@ export interface ProcessCardPaymentInput {
   payerDocument: { type: string; number: string } | null;
 }
 
+export interface ProcessPixPaymentInput {
+  /** Nosso payment.id interno — enviado como external_reference ao MP. */
+  paymentId: string;
+  transactionAmount: number;
+  payerEmail: string;
+  payerDocument: { type: string; number: string } | null;
+}
+
+export interface PixPaymentResult {
+  status: PaymentStatus;
+  externalPaymentId: string;
+  externalReference: string | null;
+  paymentMethod: string;
+  pixCopyPaste: string | null;
+  pixQrCodeBase64: string | null;
+  pixExpiresAt: Date | null;
+  rawStatus: string;
+}
+
 export interface IPaymentProvider {
   createPaymentIntent(input: CreatePaymentIntentInput): Promise<PaymentIntentResult>;
   processCardPayment(input: ProcessCardPaymentInput): Promise<NormalizedPaymentStatus>;
+  processPixPayment(input: ProcessPixPaymentInput): Promise<PixPaymentResult>;
   getPaymentStatus(externalPaymentId: string): Promise<NormalizedPaymentStatus>;
   parseWebhookEvent(
     payload: unknown,
