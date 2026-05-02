@@ -31,7 +31,41 @@ export type HubDisplayStatus =
 
 export type HubItemKind = 'open_offer' | 'direct_invite' | 'contract';
 
-export type HubPrimaryAction = 'review_applications' | 'view_details';
+/** Estado semântico do item do hub pela perspectiva da empresa. */
+export type CompanyPerspectiveStatus =
+  | 'UPCOMING_WORK'
+  | 'COMPANY_CONFIRMATION_REQUIRED'
+  | 'AWAITING_CREATOR_CONFIRMATION'
+  | 'AWAITING_AUTO_COMPLETION'
+  | 'COMPLETION_DISPUTE'
+  | 'COMPLETED'
+  | 'CANCELLED'
+  | 'EXPIRED'
+  | 'PENDING_PAYMENT'
+  | 'REVIEW_REQUIRED'
+  | 'OPEN';
+
+export type CompanyHubAction =
+  | 'review_applications'
+  | 'confirm_completion'
+  | 'dispute_completion'
+  | 'view_details';
+
+export type CompletionConfirmation = {
+  companyConfirmedAt: string | null;
+  creatorConfirmedAt: string | null;
+  contestDeadlineAt: string | null;
+};
+
+export type ContractPerspectiveInput = {
+  status: ContractRequestStatus;
+  startsAt: Date | null;
+  durationMinutes: number | null;
+  companyConfirmedCompletedAt: Date | null;
+  creatorConfirmedCompletedAt: Date | null;
+  contestDeadlineAt: Date | null;
+  effectiveExpiresAt: Date | null;
+};
 
 /**
  * View model do hub da empresa — não é DTO de domínio genérico.
@@ -53,21 +87,18 @@ export type CompanyHubItem = {
   displayStatus: HubDisplayStatus;
   expiresAt: string | null;
   effectiveExpiresAt: string | null;
-  /** Prazo de 72h para confirmar ou contestar (disponível para itens em AWAITING_COMPLETION_CONFIRMATION). */
-  contestDeadlineAt: string | null;
   /** Data de conclusão do contrato (quando status transitou para COMPLETED). Null para não-COMPLETED. */
   completedAt: string | null;
-  /**
-   * True quando a empresa ainda não confirmou e o prazo está ativo.
-   * Sinaliza que há uma ação pendente por parte da empresa.
-   */
-  actionRequiredByCompany: boolean;
-  primaryAction: HubPrimaryAction;
+  /** Estado semântico calculado pelo backend; use este campo para decisões de UI. */
+  companyPerspectiveStatus: CompanyPerspectiveStatus;
+  /** True quando companyPerspectiveStatus === 'COMPANY_CONFIRMATION_REQUIRED'. */
+  companyActionRequired: boolean;
+  primaryAction: CompanyHubAction;
+  availableActions: CompanyHubAction[];
+  /** Campos de confirmação bilateral. Presente em AWAITING/DISPUTE/COMPLETED; null nos demais. */
+  completionConfirmation: CompletionConfirmation | null;
   applicationsToReviewCount: number;
-  /**
-   * Indica se a empresa ainda não avaliou este contrato.
-   * true = avaliação pendente, false = já avaliada, null = não aplicável (não é COMPLETED).
-   */
+  /** true = avaliação pendente, false = já avaliada, null = não aplicável (não é COMPLETED). */
   myReviewPending: boolean | null;
   creatorId: string | null;
   creatorName: string | null;
@@ -83,6 +114,99 @@ export type CompanyHubItem = {
   /** Expiração do PIX, se o método escolhido foi PIX. Null nos demais casos. */
   pixExpiresAt: string | null;
 };
+
+// ─── Pure helpers (exportados para testes) ────────────────────────────────────
+
+export function buildCompanyPerspectiveStatus(
+  input: ContractPerspectiveInput,
+  now: Date = new Date(),
+): CompanyPerspectiveStatus {
+  const {
+    status,
+    startsAt,
+    durationMinutes,
+    companyConfirmedCompletedAt,
+    creatorConfirmedCompletedAt,
+    contestDeadlineAt,
+    effectiveExpiresAt,
+  } = input;
+
+  if (status === ContractRequestStatus.COMPLETED) return 'COMPLETED';
+  if (
+    status === ContractRequestStatus.CANCELLED ||
+    status === ContractRequestStatus.REJECTED
+  ) return 'CANCELLED';
+  if (status === ContractRequestStatus.EXPIRED) return 'EXPIRED';
+
+  if (status === ContractRequestStatus.PENDING_PAYMENT) {
+    if (effectiveExpiresAt !== null && effectiveExpiresAt <= now) return 'EXPIRED';
+    return 'PENDING_PAYMENT';
+  }
+
+  if (status === ContractRequestStatus.PENDING_ACCEPTANCE) return 'UPCOMING_WORK';
+  if (status === ContractRequestStatus.COMPLETION_DISPUTE) return 'COMPLETION_DISPUTE';
+
+  if (status === ContractRequestStatus.AWAITING_COMPLETION_CONFIRMATION) {
+    const deadlineActive = contestDeadlineAt !== null && contestDeadlineAt > now;
+    if (!deadlineActive) return 'AWAITING_AUTO_COMPLETION';
+    if (companyConfirmedCompletedAt === null) return 'COMPANY_CONFIRMATION_REQUIRED';
+    if (creatorConfirmedCompletedAt === null) return 'AWAITING_CREATOR_CONFIRMATION';
+    return 'AWAITING_AUTO_COMPLETION';
+  }
+
+  if (status === ContractRequestStatus.ACCEPTED) {
+    if (startsAt !== null && durationMinutes !== null) {
+      const endsAt = new Date(startsAt.getTime() + durationMinutes * 60_000);
+      if (endsAt <= now) return 'AWAITING_AUTO_COMPLETION';
+    }
+    return 'UPCOMING_WORK';
+  }
+
+  return 'UPCOMING_WORK';
+}
+
+export function buildAvailableActions(
+  perspectiveStatus: CompanyPerspectiveStatus,
+): CompanyHubAction[] {
+  if (perspectiveStatus === 'COMPANY_CONFIRMATION_REQUIRED') {
+    return ['confirm_completion', 'dispute_completion', 'view_details'];
+  }
+  if (perspectiveStatus === 'REVIEW_REQUIRED') {
+    return ['review_applications', 'view_details'];
+  }
+  return ['view_details'];
+}
+
+export function resolvePrimaryAction(
+  perspectiveStatus: CompanyPerspectiveStatus,
+): CompanyHubAction {
+  if (perspectiveStatus === 'COMPANY_CONFIRMATION_REQUIRED') return 'confirm_completion';
+  if (perspectiveStatus === 'REVIEW_REQUIRED') return 'review_applications';
+  return 'view_details';
+}
+
+export function buildCompletionConfirmation(
+  contract: Pick<
+    ContractRequest,
+    | 'status'
+    | 'companyConfirmedCompletedAt'
+    | 'creatorConfirmedCompletedAt'
+    | 'contestDeadlineAt'
+  >,
+): CompletionConfirmation | null {
+  if (
+    contract.status !== ContractRequestStatus.AWAITING_COMPLETION_CONFIRMATION &&
+    contract.status !== ContractRequestStatus.COMPLETION_DISPUTE &&
+    contract.status !== ContractRequestStatus.COMPLETED
+  ) {
+    return null;
+  }
+  return {
+    companyConfirmedAt: contract.companyConfirmedCompletedAt?.toISOString() ?? null,
+    creatorConfirmedAt: contract.creatorConfirmedCompletedAt?.toISOString() ?? null,
+    contestDeadlineAt: contract.contestDeadlineAt?.toISOString() ?? null,
+  };
+}
 
 export type CompanyOffersHubResponse = {
   pending: {
@@ -328,6 +452,11 @@ export class CompanyOffersService {
     const displayStatus: HubDisplayStatus =
       section === 'cancelled' ? 'CANCELLED' : section === 'expired' ? 'EXPIRED' : 'OPEN';
 
+    const perspectiveStatus: CompanyPerspectiveStatus =
+      section === 'cancelled' ? 'CANCELLED' :
+      section === 'expired' ? 'EXPIRED' :
+      applicationsToReviewCount > 0 ? 'REVIEW_REQUIRED' : 'OPEN';
+
     return {
       id: offer.id,
       kind: 'open_offer',
@@ -341,12 +470,12 @@ export class CompanyOffersService {
       displayStatus,
       expiresAt: offer.expiresAt?.toISOString() ?? null,
       effectiveExpiresAt: offer.expiresAt?.toISOString() ?? null,
-      contestDeadlineAt: null,
       completedAt: null,
-      actionRequiredByCompany: false,
-      primaryAction: section === 'pending' && applicationsToReviewCount > 0
-        ? 'review_applications'
-        : 'view_details',
+      companyPerspectiveStatus: perspectiveStatus,
+      companyActionRequired: false,
+      primaryAction: resolvePrimaryAction(perspectiveStatus),
+      availableActions: buildAvailableActions(perspectiveStatus),
+      completionConfirmation: null,
       applicationsToReviewCount,
       myReviewPending: null,
       creatorId: null,
@@ -369,14 +498,18 @@ export class CompanyOffersService {
     now: Date,
     payment: Payment | null,
   ): CompanyHubItem {
-    const isAwaiting =
-      contract.status === ContractRequestStatus.AWAITING_COMPLETION_CONFIRMATION;
-
-    const actionRequiredByCompany =
-      isAwaiting &&
-      contract.companyConfirmedCompletedAt === null &&
-      contract.contestDeadlineAt !== null &&
-      contract.contestDeadlineAt > now;
+    const perspectiveStatus = buildCompanyPerspectiveStatus(
+      {
+        status: contract.status,
+        startsAt: contract.startsAt ?? null,
+        durationMinutes: contract.durationMinutes ?? null,
+        companyConfirmedCompletedAt: contract.companyConfirmedCompletedAt ?? null,
+        creatorConfirmedCompletedAt: contract.creatorConfirmedCompletedAt ?? null,
+        contestDeadlineAt: contract.contestDeadlineAt ?? null,
+        effectiveExpiresAt,
+      },
+      now,
+    );
 
     return {
       id: contract.id,
@@ -391,10 +524,12 @@ export class CompanyOffersService {
       displayStatus,
       expiresAt: contract.expiresAt?.toISOString() ?? null,
       effectiveExpiresAt: effectiveExpiresAt?.toISOString() ?? null,
-      contestDeadlineAt: contract.contestDeadlineAt?.toISOString() ?? null,
       completedAt: contract.completedAt?.toISOString() ?? null,
-      actionRequiredByCompany,
-      primaryAction: 'view_details',
+      companyPerspectiveStatus: perspectiveStatus,
+      companyActionRequired: perspectiveStatus === 'COMPANY_CONFIRMATION_REQUIRED',
+      primaryAction: resolvePrimaryAction(perspectiveStatus),
+      availableActions: buildAvailableActions(perspectiveStatus),
+      completionConfirmation: buildCompletionConfirmation(contract),
       applicationsToReviewCount: 0,
       myReviewPending:
         displayStatus === 'COMPLETED'
