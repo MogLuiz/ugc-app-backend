@@ -10,15 +10,18 @@ import { UsersRepository } from '../users/users.repository';
 import { ContractRequest } from '../contract-requests/entities/contract-request.entity';
 import { OpenOfferApplication } from '../open-offers/entities/open-offer-application.entity';
 import {
+  buildCreatorAvailableActions,
+  buildCreatorCompletionConfirmation,
+  buildCreatorPerspectiveStatus,
   CreatorHubCompany,
   CreatorHubDisplayStatus,
   CreatorHubItem,
   CreatorHubItemKind,
-  CreatorHubPrimaryAction,
   CreatorHubSummary,
   CreatorOffersHubResponse,
   EXPIRE_SOON_THRESHOLD_MS,
   PENDING_INVITE_EXPIRY_MS,
+  resolveCreatorPrimaryAction,
 } from './creator-offers-hub.types';
 
 @Injectable()
@@ -234,10 +237,25 @@ export class CreatorOffersService {
     effectiveExpiresAt: Date | null,
     now: Date,
   ): CreatorHubItem {
-    const flags = this.buildActionFlags(contract, displayStatus, now);
     const myReviewPending = this.resolveMyReviewPending(contract, displayStatus);
-    const primaryAction = this.derivePrimaryAction(flags, myReviewPending);
     const finalizedAt = this.resolveFinalizedAt(contract, displayStatus, effectiveExpiresAt);
+
+    const perspectiveStatus = buildCreatorPerspectiveStatus(
+      {
+        status: contract.status,
+        startsAt: contract.startsAt ?? null,
+        durationMinutes: contract.durationMinutes ?? null,
+        creatorConfirmedCompletedAt: contract.creatorConfirmedCompletedAt ?? null,
+        companyConfirmedCompletedAt: contract.companyConfirmedCompletedAt ?? null,
+        contestDeadlineAt: contract.contestDeadlineAt ?? null,
+        effectiveExpiresAt,
+        myReviewPending,
+      },
+      now,
+    );
+
+    const availableActions = buildCreatorAvailableActions(perspectiveStatus);
+    const primaryAction = resolveCreatorPrimaryAction(perspectiveStatus);
 
     return {
       id: contract.id,
@@ -259,10 +277,18 @@ export class CreatorOffersService {
       address: contract.jobFormattedAddress ?? contract.jobAddress ?? 'Local a combinar',
       locationDisplay: this.extractLocationDisplay(contract.jobFormattedAddress, contract.jobAddress),
 
+      creatorPerspectiveStatus: perspectiveStatus,
       primaryAction,
-      actionRequired: primaryAction !== CreatorHubPrimaryAction.VIEW,
+      availableActions,
+      actionRequired: primaryAction !== 'view_details',
+      completionConfirmation: buildCreatorCompletionConfirmation(contract),
 
-      ...flags,
+      canAccept: availableActions.includes('accept_invite'),
+      canReject: availableActions.includes('reject_invite'),
+      canCancel: displayStatus === CreatorHubDisplayStatus.ACCEPTED,
+      canConfirmCompletion: availableActions.includes('confirm_completion'),
+      canDispute: availableActions.includes('contest_completion'),
+
       myReviewPending,
     };
   }
@@ -311,8 +337,11 @@ export class CreatorOffersService {
       address: offer?.jobFormattedAddress ?? offer?.jobAddress ?? 'Local a combinar',
       locationDisplay: null,
 
-      primaryAction: CreatorHubPrimaryAction.VIEW,
+      creatorPerspectiveStatus: 'AVAILABLE_OPPORTUNITY',
+      primaryAction: 'view_details',
+      availableActions: ['view_details'],
       actionRequired: false,
+      completionConfirmation: null,
 
       canAccept: false,
       canReject: false,
@@ -324,45 +353,12 @@ export class CreatorOffersService {
     };
   }
 
-  private buildActionFlags(
-    contract: ContractRequest,
-    displayStatus: CreatorHubDisplayStatus,
-    now: Date,
-  ): Pick<
-    CreatorHubItem,
-    'canAccept' | 'canReject' | 'canCancel' | 'canConfirmCompletion' | 'canDispute'
-  > {
-    const withinContestWindow =
-      displayStatus === CreatorHubDisplayStatus.AWAITING_CONFIRMATION &&
-      contract.creatorConfirmedCompletedAt === null &&
-      contract.contestDeadlineAt !== null &&
-      contract.contestDeadlineAt > now;
-
-    return {
-      canAccept: displayStatus === CreatorHubDisplayStatus.PENDING_INVITE,
-      canReject: displayStatus === CreatorHubDisplayStatus.PENDING_INVITE,
-      canCancel: displayStatus === CreatorHubDisplayStatus.ACCEPTED,
-      canConfirmCompletion: withinContestWindow,
-      canDispute: withinContestWindow,
-    };
-  }
-
   private resolveMyReviewPending(
     contract: ContractRequest,
     displayStatus: CreatorHubDisplayStatus,
   ): boolean | null {
     if (displayStatus !== CreatorHubDisplayStatus.COMPLETED) return null;
     return contract.reviews === undefined || contract.reviews.length === 0;
-  }
-
-  private derivePrimaryAction(
-    flags: ReturnType<typeof this.buildActionFlags>,
-    myReviewPending: boolean | null,
-  ): CreatorHubPrimaryAction {
-    if (flags.canAccept) return CreatorHubPrimaryAction.ACCEPT_OR_REJECT;
-    if (flags.canConfirmCompletion) return CreatorHubPrimaryAction.CONFIRM_OR_DISPUTE;
-    if (myReviewPending === true) return CreatorHubPrimaryAction.LEAVE_REVIEW;
-    return CreatorHubPrimaryAction.VIEW;
   }
 
   private resolveExpiresSoon(
