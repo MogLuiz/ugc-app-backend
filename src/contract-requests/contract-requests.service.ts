@@ -40,6 +40,10 @@ import {
   CONTRACT_REQUEST_COMPLETED_EVENT,
   ContractRequestCompletedEvent,
 } from './events/contract-request-completed.event';
+import {
+  CONTRACT_REQUEST_ACCEPTED_EVENT,
+  ContractRequestAcceptedEvent,
+} from './events/contract-request-accepted.event';
 import { CompanyBalanceService } from '../billing/company-balance.service';
 import { BalanceTransactionType } from '../billing/enums/balance-transaction-type.enum';
 import { Payment } from '../payments/entities/payment.entity';
@@ -341,6 +345,19 @@ export class ContractRequestsService {
         actor.id,
         manager,
       );
+
+      this.eventEmitter.emit(CONTRACT_REQUEST_ACCEPTED_EVENT, {
+        contractRequestId: updated.id,
+        companyUserId: updated.companyUserId,
+        creatorId: updated.creatorUserId,
+        creatorName:
+          actor.profile?.name?.trim() ||
+          updated.creatorNameSnapshot?.trim() ||
+          'Creator',
+        offerTitle: updated.description?.trim() || 'sua campanha',
+        openOfferId: updated.openOfferId,
+        occurredAt: new Date(),
+      } satisfies ContractRequestAcceptedEvent);
 
       return this.buildPayload(updated);
     });

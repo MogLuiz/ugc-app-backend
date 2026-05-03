@@ -54,7 +54,7 @@ export class JobCompletionService {
 
     const overdue = await this.contractRequestRepo
       .createQueryBuilder('cr')
-      .select(['cr.id', 'cr.creatorUserId'])
+      .select(['cr.id', 'cr.creatorUserId', 'cr.companyUserId'])
       .where('cr.status = :status', { status: ContractRequestStatus.ACCEPTED })
       .andWhere(
         `cr.starts_at + (cr.duration_minutes || ' minutes')::interval < :now`,
@@ -88,6 +88,8 @@ export class JobCompletionService {
             {
               contractRequestId: contract.id,
               creatorUserId: contract.creatorUserId,
+              companyUserId: contract.companyUserId,
+              contestDeadlineAt,
               occurredAt: now,
             } satisfies ContractAwaitingCompletionConfirmationEvent,
           );

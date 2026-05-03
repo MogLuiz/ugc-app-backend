@@ -7,6 +7,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { DataSource, EntityManager } from 'typeorm';
 import { AuthUser } from '../common/interfaces/auth-user.interface';
 import { UserRole } from '../common/enums/user-role.enum';
@@ -32,6 +33,10 @@ import { SelectOpenOfferCreatorDto } from './dto/select-open-offer-creator.dto';
 import { LegalService } from '../legal/legal.service';
 import { LegalTermType } from '../common/enums/legal-term-type.enum';
 import { LegalAcceptance } from '../legal/entities/legal-acceptance.entity';
+import {
+  OPEN_OFFER_APPLICATION_CREATED_EVENT,
+  OpenOfferApplicationCreatedEvent,
+} from './events/open-offer-application-created.event';
 
 type LegalAcceptanceContext = {
   ipAddress?: string | null;
@@ -56,6 +61,7 @@ export class OpenOffersService {
     private readonly configService: ConfigService,
     private readonly legalService: LegalService,
     private readonly financialSnapshotService: FinancialSnapshotService,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
   async create(authUser: AuthUser, dto: CreateOpenOfferDto) {
@@ -322,6 +328,16 @@ export class OpenOffersService {
       status: ApplicationStatus.PENDING,
       appliedAt: new Date(),
     });
+
+    this.eventEmitter.emit(OPEN_OFFER_APPLICATION_CREATED_EVENT, {
+      openOfferId: offer.id,
+      applicationId: app.id,
+      companyUserId: offer.companyUserId,
+      creatorId: creator.id,
+      creatorName: creator.profile?.name?.trim() || 'Creator',
+      offerTitle: offer.jobType?.name?.trim() || 'sua oportunidade',
+      occurredAt: new Date(),
+    } satisfies OpenOfferApplicationCreatedEvent);
 
     return { id: app.id, status: app.status, appliedAt: app.appliedAt };
   }

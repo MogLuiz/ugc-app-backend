@@ -4,5 +4,7 @@ export const CONTRACT_AWAITING_COMPLETION_CONFIRMATION_EVENT =
 export type ContractAwaitingCompletionConfirmationEvent = {
   contractRequestId: string;
   creatorUserId: string;
+  companyUserId: string;
+  contestDeadlineAt: Date;
   occurredAt: Date;
 };

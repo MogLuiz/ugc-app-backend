@@ -232,4 +232,27 @@ describe('NotificationsService', () => {
     });
     expect(mocks.pushTokenUpdate.execute).toHaveBeenCalled();
   });
+
+  it('creates an in-app only notification when shouldPush is false', async () => {
+    const { service, mocks } = createService();
+    const notification = buildNotification();
+
+    mocks.notificationRepo.findOne.mockResolvedValue(null);
+    mocks.notificationRepo.create.mockReturnValue(notification);
+    mocks.notificationRepo.save.mockResolvedValue(notification);
+
+    const result = await service.createNotification({
+      userId: 'user-1',
+      type: 'company_review_creator_required',
+      title: 'Avalie o creator',
+      body: 'O trabalho foi concluído. Falta sua avaliação.',
+      sourceType: 'contract_request',
+      sourceId: 'contract-1',
+      shouldPush: false,
+    });
+
+    expect(mocks.pushProvider.sendToUser).not.toHaveBeenCalled();
+    expect(mocks.pushTokenRepo.find).not.toHaveBeenCalled();
+    expect(result.pushedAt).toBeNull();
+  });
 });

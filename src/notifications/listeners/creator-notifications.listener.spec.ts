@@ -96,6 +96,8 @@ describe('CreatorNotificationsListener', () => {
     await listener.handleAwaitingCompletionConfirmation({
       contractRequestId: 'contract-1',
       creatorUserId: 'creator-1',
+      companyUserId: 'company-1',
+      contestDeadlineAt: new Date('2026-05-01T12:00:00.000Z'),
       occurredAt: new Date('2026-04-27T12:00:00.000Z'),
     });
 

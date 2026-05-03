@@ -24,6 +24,7 @@ type CreateNotificationParams = {
   sourceType: string;
   sourceId?: string | null;
   dedupeKey?: string | null;
+  shouldPush?: boolean;
 };
 
 type NotificationResponse = {
@@ -127,7 +128,9 @@ export class NotificationsService {
     });
 
     const saved = await this.notificationRepo.save(notification);
-    await this.trySendPush(saved);
+    if (params.shouldPush ?? true) {
+      await this.trySendPush(saved);
+    }
     return this.toNotificationResponse(saved);
   }
 

@@ -256,9 +256,7 @@ export class ConversationsService {
       };
     });
 
-    if (event.recipientRole === ConversationParticipantRole.CREATOR) {
-      this.eventEmitter.emit(MESSAGE_SENT_EVENT, event);
-    }
+    this.eventEmitter.emit(MESSAGE_SENT_EVENT, event);
 
     return payload;
   }
