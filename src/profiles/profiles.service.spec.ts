@@ -1,6 +1,7 @@
 import { ForbiddenException, BadRequestException, NotFoundException } from '@nestjs/common';
 import { ProfilesService } from './profiles.service';
 import { UserRole } from '../common/enums/user-role.enum';
+import { PartnerStatus } from '../referrals/enums/partner-status.enum';
 
 describe('ProfilesService', () => {
   function createService() {
@@ -17,12 +18,13 @@ describe('ProfilesService', () => {
       })),
     };
     const companyProfileRepo = { findOne: jest.fn(), save: jest.fn() };
-    const portfolioService = { buildPortfolioPayload: jest.fn() };
+    const portfolioService = { buildPortfolioPayload: jest.fn().mockResolvedValue(null) };
     const availabilityRepository = {};
     const profileLocationService = {};
     const creatorJobTypesRepository = {};
     const distanceService = {};
     const configService = { get: jest.fn() };
+    const partnerProfileRepo = { findOne: jest.fn().mockResolvedValue(null) };
 
     const service = new ProfilesService(
       configService as any,
@@ -35,6 +37,7 @@ describe('ProfilesService', () => {
       profileLocationService as any,
       creatorJobTypesRepository as any,
       distanceService as any,
+      partnerProfileRepo as any,
     );
 
     return {
@@ -42,6 +45,8 @@ describe('ProfilesService', () => {
       mocks: {
         usersRepository,
         creatorProfileRepo,
+        partnerProfileRepo,
+        portfolioService,
       },
     };
   }
@@ -252,5 +257,70 @@ describe('ProfilesService', () => {
     await expect(service.getCreatorPayoutSettings('missing')).rejects.toBeInstanceOf(
       NotFoundException,
     );
+  });
+
+  describe('getMe — partner field', () => {
+    function makeUser(overrides: Record<string, unknown> = {}) {
+      return {
+        id: 'user-1',
+        authUserId: 'auth-1',
+        email: 'user@test.com',
+        role: UserRole.CREATOR,
+        profile: null,
+        creatorProfile: null,
+        companyProfile: null,
+        ...overrides,
+      };
+    }
+
+    it('returns partner: null when user has no partner profile', async () => {
+      const { service, mocks } = createService();
+      mocks.usersRepository.findByAuthUserIdWithProfiles.mockResolvedValue(makeUser());
+      mocks.partnerProfileRepo.findOne.mockResolvedValue(null);
+
+      const result = await service.getMe('auth-1');
+
+      expect(result.partner).toBeNull();
+    });
+
+    it('returns partner with id and status ACTIVE when partner profile exists', async () => {
+      const { service, mocks } = createService();
+      mocks.usersRepository.findByAuthUserIdWithProfiles.mockResolvedValue(makeUser());
+      mocks.partnerProfileRepo.findOne.mockResolvedValue({
+        userId: 'user-1',
+        status: PartnerStatus.ACTIVE,
+      });
+
+      const result = await service.getMe('auth-1');
+
+      expect(result.partner).toEqual({ id: 'user-1', status: PartnerStatus.ACTIVE });
+    });
+
+    it('returns partner with status SUSPENDED when partner is suspended', async () => {
+      const { service, mocks } = createService();
+      mocks.usersRepository.findByAuthUserIdWithProfiles.mockResolvedValue(makeUser());
+      mocks.partnerProfileRepo.findOne.mockResolvedValue({
+        userId: 'user-1',
+        status: PartnerStatus.SUSPENDED,
+      });
+
+      const result = await service.getMe('auth-1');
+
+      expect(result.partner).toEqual({ id: 'user-1', status: PartnerStatus.SUSPENDED });
+    });
+
+    it('fetches partner profile in parallel with portfolio (both called once)', async () => {
+      const { service, mocks } = createService();
+      mocks.usersRepository.findByAuthUserIdWithProfiles.mockResolvedValue(makeUser());
+
+      await service.getMe('auth-1');
+
+      expect(mocks.portfolioService.buildPortfolioPayload).toHaveBeenCalledTimes(1);
+      expect(mocks.partnerProfileRepo.findOne).toHaveBeenCalledTimes(1);
+      expect(mocks.partnerProfileRepo.findOne).toHaveBeenCalledWith({
+        where: { userId: 'user-1' },
+        select: { userId: true, status: true },
+      });
+    });
   });
 });

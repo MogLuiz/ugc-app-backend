@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { Profile } from './entities/profile.entity';
 import { CreatorProfile } from './entities/creator-profile.entity';
 import { CompanyProfile } from './entities/company-profile.entity';
+import { PartnerProfile } from '../referrals/entities/partner-profile.entity';
 import { ProfilesService } from './profiles.service';
 import { ProfilesController } from './profiles.controller';
 import { UsersModule } from '../users/users.module';
@@ -16,7 +17,7 @@ import { DistanceService } from '../contract-requests/services/distance.service'
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Profile, CreatorProfile, CompanyProfile]),
+    TypeOrmModule.forFeature([Profile, CreatorProfile, CompanyProfile, PartnerProfile]),
     UsersModule,
     AuthModule,
     PortfolioModule,

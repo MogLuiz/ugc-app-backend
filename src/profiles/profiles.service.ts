@@ -7,6 +7,7 @@ import { User } from '../users/entities/user.entity';
 import { Profile } from './entities/profile.entity';
 import { CreatorProfile } from './entities/creator-profile.entity';
 import { CompanyProfile } from './entities/company-profile.entity';
+import { PartnerProfile } from '../referrals/entities/partner-profile.entity';
 import { UserRole } from '../common/enums/user-role.enum';
 import {
   type MarketplaceCreatorTestimonial,
@@ -62,6 +63,8 @@ export class ProfilesService {
     private profileLocationService: ProfileLocationService,
     private creatorJobTypesRepository: CreatorJobTypesRepository,
     private distanceService: DistanceService,
+    @InjectRepository(PartnerProfile)
+    private partnerProfileRepo: Repository<PartnerProfile>,
   ) {}
 
   async getMe(authUserId: string, warnings?: string[]) {
@@ -561,7 +564,13 @@ export class ProfilesService {
   }
 
   private async buildPayload(user: User, warnings?: string[]) {
-    const portfolio = await this.portfolioService.buildPortfolioPayload(user.id);
+    const [portfolio, partnerProfile] = await Promise.all([
+      this.portfolioService.buildPortfolioPayload(user.id),
+      this.partnerProfileRepo.findOne({
+        where: { userId: user.id },
+        select: { userId: true, status: true },
+      }),
+    ]);
 
     return {
       id: user.id,
@@ -628,6 +637,9 @@ export class ProfilesService {
           }
         : null,
       portfolio,
+      partner: partnerProfile
+        ? { id: partnerProfile.userId, status: partnerProfile.status }
+        : null,
       warnings: warnings?.filter(Boolean) ?? [],
     };
   }
